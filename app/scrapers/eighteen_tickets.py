@@ -17,55 +17,11 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import httpx
 
-from app.scrapers.base import BaseScraper, ComingSoonData, ShowtimeData
+from app.scrapers.base import BaseScraper, ComingSoonData, ShowtimeData, clean_title
 
 DEFAULT_USER_AGENT = "CineWatch/0.1.0 (+https://github.com/cinewatch; personal cinema tracker)"
 DEFAULT_TIMEOUT = 15.0
 
-
-def clean_title(title: str) -> str:
-    """Clean cinema title noise: remove durations, age ratings, event prefixes, and hashtags.
-
-    Examples:
-        - "PRIMETIME (1H50')" -> "PRIMETIME"
-        - "14+ MAMMINA" -> "MAMMINA"
-        - "EVENTO 8 TRAINSPOTTING 30° ANNIVERSARIO" -> "TRAINSPOTTING 30° ANNIVERSARIO"
-        - "#ANTEPRIMA DUNE – PARTE TRE" -> "DUNE – PARTE TRE"
-        - "SE AMI QUALCUNO DILLO (1H40')" -> "SE AMI QUALCUNO DILLO"
-    """
-    if not title:
-        return ""
-
-    t = title.strip()
-
-    # 1. Remove duration in parentheses, e.g. (1H50'), (1h40m), (2H05'), (90'), (100 min)
-    t = re.sub(r"\s*\(\s*\d+\s*[hH]\s*\d*['m]?\s*\)", "", t)
-    t = re.sub(r"\s*\(\s*\d+\s*(?:min|minuti|'|m)\s*\)", "", t, flags=re.IGNORECASE)
-
-    # 2. Iteratively strip prefixes: hashtags, age ratings, events, anteprima/prima visione
-    prefix_patterns = [
-        # Hashtags like #ANTEPRIMA, #EVENTO, #SPECIAL
-        r"^#\w+\s*[-:–—]?\s*",
-        # Age ratings: 14+, 18+, 6+, VM14, VM18, VM 14+, etc.
-        r"^(?:(?:VM\s*)?\d+\s*\+|\bVM\s*(?:14|18|6|12)\b)\s*[-:–—]?\s*",
-        # Event: EVENTO 8, EVENTO 10, EVENTO € 8.00, EVENTO
-        r"^EVENTO(?:\s+(?:€\s*)?[\d\.,]+)?\s*[-:–—]?\s*",
-        # PRIMA VISIONE, ANTEPRIMA without hashtag
-        r"^(?:PRIMA\s+VISIONE|ANTEPRIMA)\s*[-:–—]?\s*",
-    ]
-
-    changed = True
-    while changed:
-        changed = False
-        for pat in prefix_patterns:
-            new_t = re.sub(pat, "", t, flags=re.IGNORECASE).strip()
-            if new_t != t:
-                t = new_t
-                changed = True
-
-    # 3. Strip any leftover leading or trailing separators (dashes, colons)
-    t = re.sub(r"^[-:–—\s]+|[-:–—\s]+$", "", t)
-    return t.strip()
 
 
 def parse_showtimes_html(html: str, cinema_slug: str, base_url: str = "") -> list[ShowtimeData]:

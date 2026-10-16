@@ -22,3 +22,9 @@ cinemas:
     url: "https://cinemateatroitalia.cosenzacinema.18tickets.it/"
     scraper: 18tickets
 
+  - slug: garden
+    name: "Cinema Garden (Rende)"
+    url: "https://www.cinemagarden.net/default.aspx"
+    scraper: garden
+
+

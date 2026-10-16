@@ -12,6 +12,7 @@ from app.config import CinemaConfig, settings
 from app.db.models import Cinema, Film, Showtime
 from app.scrapers.base import BaseScraper
 from app.scrapers.eighteen_tickets import EighteenTicketsScraper, clean_title
+from app.scrapers.garden import CinemaGardenScraper
 from app.scrapers.stub import StubScraper
 
 # Registry: maps the ``scraper`` value in cinemas.yaml to its class.
@@ -19,7 +20,11 @@ SCRAPER_REGISTRY: dict[str, type[BaseScraper]] = {
     "stub": StubScraper,
     "18tickets": EighteenTicketsScraper,
     "eighteen_tickets": EighteenTicketsScraper,
+    "garden": CinemaGardenScraper,
+    "cinema_garden": CinemaGardenScraper,
+    "cinema-garden": CinemaGardenScraper,
 }
+
 
 
 def normalize_title(raw: str) -> str:
