@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CineWatch – {% block title %}Cinema Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.12"
+            integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0s9R3SzYQWRcWE5cUD+n/ePOEhs5rpYOkOe8Q6"
+            crossorigin="anonymous"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="logo">🎬 CineWatch</a>
+        <div class="nav-links">
+            <a href="/">In Sala</a>
+            <a href="/watchlist">Watchlist</a>
+            <form method="post" action="/sync" style="display:inline">
+                <button type="submit" class="btn btn-sync">🔄 Sync</button>
+            </form>
+        </div>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="footer">
+        <small>CineWatch · Cinema di Cosenza &amp; Rende</small>
+    </footer>
+</body>
+</html>
+

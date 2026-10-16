@@ -1,0 +1,30 @@
+[project]
+name = "cinewatch"
+version = "0.1.0"
+description = "Cinema tracker for Cosenza/Rende – track screenings, vote, export to Letterboxd"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.104",
+    "jinja2>=3.1",
+    "sqlalchemy>=2.0",
+    "httpx>=0.25",
+    "selectolax>=0.3",
+    "beautifulsoup4>=4.12",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "httpx",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+

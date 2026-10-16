@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Watchlist{% endblock %}
+
+{% block content %}
+<h1>Watchlist</h1>
+<p>Film usciti dalle sale che volevi vedere – pronti per lo streaming.</p>
+
+{% if films %}
+<a href="/export" class="btn btn-export">📥 Esporta CSV per Letterboxd</a>
+
+<div class="film-grid">
+    {% for film in films %}
+    <div class="film-card">
+        {% if film.poster_url %}
+        <img src="{{ film.poster_url }}" alt="{{ film.raw_title }}" class="poster" loading="lazy">
+        {% else %}
+        <div class="poster placeholder">🎬</div>
+        {% endif %}
+
+        <div class="film-info">
+            <h3>{{ film.tmdb_title or film.raw_title }}</h3>
+            {% if film.year %}<span class="year">{{ film.year }}</span>{% endif %}
+            <span class="vote-badge vote-{{ film.vote }}">{{ film.vote }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">
+    Nessun film nella watchlist per ora.<br>
+    Quando un film segnato <strong>V</strong> o <strong>?</strong> esce da tutte le sale, apparirà qui.
+</p>
+{% endif %}
+{% endblock %}
+

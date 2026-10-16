@@ -1,0 +1,150 @@
+/* ===== CineWatch – minimal dark theme ===== */
+
+:root {
+    --bg: #121212;
+    --surface: #1e1e1e;
+    --text: #e0e0e0;
+    --text-muted: #888;
+    --accent: #bb86fc;
+    --green: #4caf50;
+    --yellow: #ff9800;
+    --red: #f44336;
+    --radius: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- Navbar ---- */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid #333;
+}
+.logo {
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-decoration: none;
+    color: var(--accent);
+}
+.nav-links { display: flex; gap: 1rem; align-items: center; }
+.nav-links a {
+    color: var(--text);
+    text-decoration: none;
+    transition: color .2s;
+}
+.nav-links a:hover { color: var(--accent); }
+
+/* ---- Buttons ---- */
+.btn {
+    display: inline-block;
+    padding: 0.4rem 0.9rem;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+.btn-sync { background: var(--accent); color: #000; font-weight: 600; }
+.btn-sync:hover { opacity: 0.85; }
+.btn-export {
+    background: var(--green);
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+/* ---- Container ---- */
+.container { max-width: 960px; margin: 2rem auto; padding: 0 1rem; flex: 1; }
+
+/* ---- Film grid ---- */
+.film-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+.film-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: transform .15s;
+}
+.film-card:hover { transform: translateY(-3px); }
+
+.poster {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    display: block;
+}
+.poster.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    background: #2a2a2a;
+}
+
+.film-info { padding: 0.75rem; }
+.film-info h3 { font-size: 0.95rem; margin-bottom: 0.25rem; }
+.year { font-size: 0.8rem; color: var(--text-muted); }
+
+/* ---- Vote buttons ---- */
+.vote-buttons { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+.btn-vote {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: background .15s, border-color .15s;
+}
+.btn-vote:hover { border-color: var(--accent); }
+.btn-vote.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+/* ---- Vote badge ---- */
+.vote-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.vote-V   { background: var(--green); color: #fff; }
+.vote-\?  { background: var(--yellow); color: #000; }
+.vote-X   { background: var(--red); color: #fff; }
+.vote-none { background: #333; color: var(--text-muted); }
+
+/* ---- Empty state ---- */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+/* ---- Footer ---- */
+.footer {
+    text-align: center;
+    padding: 1rem;
+    color: var(--text-muted);
+    border-top: 1px solid #333;
+    margin-top: auto;
+}
+

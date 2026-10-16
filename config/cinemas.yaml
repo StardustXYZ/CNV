@@ -1,0 +1,24 @@
+# Elenco cinema – aggiungi nuove voci senza toccare il codice.
+# Il campo "scraper" mappa il modulo in app/scrapers/ da usare.
+
+cinemas:
+  - slug: andromeda-river
+    name: "Andromeda River (Zumpano)"
+    url: "https://zumpano.andromeda.andromedacinema.it/"
+    scraper: 18tickets
+
+  - slug: citrigno
+    name: "Cinema Citrigno (Cosenza)"
+    url: "https://citrigno.cosenzacinema.18tickets.it/"
+    scraper: 18tickets
+
+  - slug: unical
+    name: "Cinema Unical (Rende)"
+    url: "https://unical.cosenzacinema.18tickets.it/"
+    scraper: 18tickets
+
+  - slug: italia-tieri
+    name: "Cinema Teatro Italia A. Tieri (Cosenza)"
+    url: "https://cinemateatroitalia.cosenzacinema.18tickets.it/"
+    scraper: 18tickets
+
