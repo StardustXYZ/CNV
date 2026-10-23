@@ -32,8 +32,107 @@ _DATE_SUFFIX_PATTERN = re.compile(
 )
 
 
-def clean_title(title: str) -> str:
+ITALIAN_MONTHS: dict[str, int] = {
+    "gennaio": 1, "gen": 1,
+    "febbraio": 2, "feb": 2,
+    "marzo": 3, "mar": 3,
+    "aprile": 4, "apr": 4,
+    "maggio": 5, "mag": 5,
+    "giugno": 6, "giu": 6,
+    "luglio": 7, "lug": 7,
+    "agosto": 8, "ago": 8,
+    "settembre": 9, "set": 9,
+    "ottobre": 10, "ott": 10,
+    "novembre": 11, "nov": 11,
+    "dicembre": 12, "dic": 12,
+}
+
+_EXTRACT_DATE_PATTERN = re.compile(
+    rf"(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?(?:dall[\'’]\s*|dal\s+|da\s+)"
+    rf"(?:"
+    rf"(?P<day_num>\d{{1,2}})[/\-](?P<month_num>\d{{1,2}})(?:[/\-](?P<year_num>\d{{2,4}}))?"
+    rf"|"
+    rf"(?P<day_word>\d{{1,2}})(?:°)?(?:\s+(?:di\s+)?(?P<month_name>{_MONTHS}))?(?:\s+(?P<year_word>\d{{4}}))?"
+    rf"|"
+    rf"(?P<month_only>{_MONTHS})(?:\s+(?P<year_only>\d{{4}}))?"
+    rf")",
+    flags=re.IGNORECASE,
+)
+
+
+class CleanedTitle(str):
+    """String representing the cleaned title with an optional release_from date."""
+
+    title: str
+    release_from: date | None
+
+    def __new__(cls, content: str, release_from: date | None = None):
+        instance = super().__new__(cls, content)
+        instance.title = str(content)
+        instance.release_from = release_from
+        return instance
+
+    def __repr__(self) -> str:
+        if self.release_from:
+            return f"CleanedTitle({super().__repr__()}, release_from={self.release_from!r})"
+        return super().__repr__()
+
+
+def extract_release_from(text: str, reference_date: date | None = None) -> date | None:
+    """Extract release date from phrases like 'DAL 16 DICEMBRE' or 'DAL 16/12'."""
+    if not text:
+        return None
+    if reference_date is None:
+        reference_date = date.today()
+
+    m = _EXTRACT_DATE_PATTERN.search(text)
+    if not m:
+        return None
+
+    d = m.groupdict()
+    day = 1
+    month = reference_date.month
+    year = reference_date.year
+
+    if d.get("day_num"):
+        day = int(d["day_num"])
+        month = int(d["month_num"])
+        if d.get("year_num"):
+            y = int(d["year_num"])
+            year = 2000 + y if y < 100 else y
+        else:
+            if month < reference_date.month:
+                year = reference_date.year + 1
+    elif d.get("day_word"):
+        day = int(d["day_word"])
+        if d.get("month_name"):
+            month = ITALIAN_MONTHS.get(d["month_name"].lower(), reference_date.month)
+            if d.get("year_word"):
+                year = int(d["year_word"])
+            else:
+                if month < reference_date.month:
+                    year = reference_date.year + 1
+        elif d.get("year_word"):
+            year = int(d["year_word"])
+    elif d.get("month_only"):
+        month = ITALIAN_MONTHS.get(d["month_only"].lower(), reference_date.month)
+        day = 1
+        if d.get("year_only"):
+            year = int(d["year_only"])
+        else:
+            if month < reference_date.month:
+                year = reference_date.year + 1
+
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def clean_title(title: str, reference_date: date | None = None) -> CleanedTitle:
     """Clean cinema title noise: remove durations, age ratings, event prefixes, hashtags, and date suffixes.
+
+    Extracts 'DAL <data>' into the .release_from property of the returned CleanedTitle.
 
     Examples:
         - "PRIMETIME (1H50')" -> "PRIMETIME"
@@ -41,11 +140,12 @@ def clean_title(title: str) -> str:
         - "EVENTO 8 TRAINSPOTTING 30° ANNIVERSARIO" -> "TRAINSPOTTING 30° ANNIVERSARIO"
         - "#ANTEPRIMA DUNE – PARTE TRE" -> "DUNE – PARTE TRE"
         - "SE AMI QUALCUNO DILLO (1H40')" -> "SE AMI QUALCUNO DILLO"
-        - "AVENGERS: DOOMSDAY - DAL 16 DICEMBRE" -> "AVENGERS: DOOMSDAY"
+        - "AVENGERS: DOOMSDAY - DAL 16 DICEMBRE" -> "AVENGERS: DOOMSDAY" (release_from=2026-12-16)
     """
     if not title:
-        return ""
+        return CleanedTitle("", None)
 
+    release_from = extract_release_from(title, reference_date=reference_date)
     t = title.strip()
 
     # 1. Remove duration in parentheses, e.g. (1H50'), (1h40m), (2H05'), (90'), (100 min)
@@ -81,7 +181,7 @@ def clean_title(title: str) -> str:
 
     # 5. Strip any leftover leading or trailing separators (dashes, colons)
     t = re.sub(r"^[-:–—\s]+|[-:–—\s]+$", "", t)
-    return t.strip()
+    return CleanedTitle(t.strip(), release_from=release_from)
 
 
 

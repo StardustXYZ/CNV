@@ -27,4 +27,9 @@ cinemas:
     url: "https://www.cinemagarden.net/default.aspx"
     scraper: garden
 
+sync_settings:
+  days_to_uscito: 7
+  days_to_uscito_evento: 3
+
+
 

@@ -68,3 +68,61 @@ def test_film_vote_values(db):
         db.refresh(film)
         assert film.vote == v
 
+
+def test_film_italian_aliases(db):
+    film = Film(
+        titolo="Il Padrino",
+        normalized_title="il padrino",
+        anno=1972,
+        stato_utente="V",
+        stato_programmazione="in_sala",
+        data_uscita_dalle_sale=date(2026, 10, 15),
+        esportato_letterboxd=True,
+    )
+    db.add(film)
+    db.commit()
+    db.refresh(film)
+
+    assert film.raw_title == "Il Padrino"
+    assert film.titolo == "Il Padrino"
+    assert film.year == 1972
+    assert film.anno == 1972
+    assert film.vote == "V"
+    assert film.stato_utente == "V"
+    assert film.status == "in_sala"
+    assert film.stato_programmazione == "in_sala"
+    assert film.left_theaters_date == date(2026, 10, 15)
+    assert film.data_uscita_dalle_sale == date(2026, 10, 15)
+    assert film.letterboxd_exported is True
+    assert film.esportato_letterboxd is True
+
+
+def test_daily_snapshot_and_sync_run(db):
+    from app.db.models import DailySnapshot, SyncRun
+
+    cinema = Cinema(slug="garden", name="Cinema Garden", url="https://example.com")
+    film = Film(titolo="Dune", normalized_title="dune")
+    db.add_all([cinema, film])
+    db.flush()
+
+    snapshot = DailySnapshot(
+        sync_date=date(2026, 10, 18),
+        cinema_id=cinema.id,
+        film_id=film.id,
+        showtimes_count=3,
+    )
+    sync_run = SyncRun(
+        sync_date=date(2026, 10, 18),
+        cinema_id=cinema.id,
+        status="ok",
+        showtimes_count=3,
+    )
+    db.add_all([snapshot, sync_run])
+    db.commit()
+
+    assert snapshot.id is not None
+    assert snapshot.film.raw_title == "Dune"
+    assert snapshot.cinema.slug == "garden"
+    assert sync_run.status == "ok"
+
+

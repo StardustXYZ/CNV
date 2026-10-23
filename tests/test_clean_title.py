@@ -72,3 +72,31 @@ from app.scrapers.eighteen_tickets import clean_title
 def test_clean_title(raw: str, expected: str):
     assert clean_title(raw) == expected
 
+
+def test_clean_title_release_from_extraction():
+    from datetime import date
+
+    # AVENGERS: DOOMSDAY - DAL 16 DICEMBRE
+    res1 = clean_title("AVENGERS: DOOMSDAY - DAL 16 DICEMBRE", reference_date=date(2026, 10, 18))
+    assert res1 == "AVENGERS: DOOMSDAY"
+    assert res1.release_from == date(2026, 12, 16)
+
+    # With numeric slash: DAL 16/12/2026
+    res2 = clean_title("AVENGERS: DOOMSDAY - DAL 16/12/2026", reference_date=date(2026, 10, 18))
+    assert res2 == "AVENGERS: DOOMSDAY"
+    assert res2.release_from == date(2026, 12, 16)
+
+    # In parentheses: (DAL 16 DICEMBRE)
+    res3 = clean_title("AVENGERS: DOOMSDAY (DAL 16 DICEMBRE)", reference_date=date(2026, 10, 18))
+    assert res3 == "AVENGERS: DOOMSDAY"
+    assert res3.release_from == date(2026, 12, 16)
+
+    # DALL'8 DICEMBRE
+    res4 = clean_title("AVENGERS: DOOMSDAY - DALL'8 DICEMBRE", reference_date=date(2026, 10, 18))
+    assert res4.release_from == date(2026, 12, 8)
+
+    # No date suffix
+    res5 = clean_title("MAMMINA (1H32')", reference_date=date(2026, 10, 18))
+    assert res5 == "MAMMINA"
+    assert res5.release_from is None
+

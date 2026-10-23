@@ -9,9 +9,13 @@ venv/
 
 # Environment
 .env
+.env.example
 
 # Database
 *.db
+
+# Local-only tests (depend on the local cinewatch.db)
+tests/test_real_db.py
 
 # IDE
 .vscode/

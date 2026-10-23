@@ -27,6 +27,8 @@ class Settings:
     DATABASE_URL: str = ""
     TMDB_API_KEY: str = ""
     CINEMAS: list[CinemaConfig] = field(default_factory=list)
+    SYNC_DAYS_TO_USCITO: int = 7
+    SYNC_DAYS_TO_USCITO_EVENTO: int = 3
 
 
 def _load_settings() -> Settings:
@@ -41,10 +43,19 @@ def _load_settings() -> Settings:
     cinemas_path = ROOT_DIR / "config" / "cinemas.yaml"
     if cinemas_path.exists():
         with open(cinemas_path, encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
+            data = yaml.safe_load(fh) or {}
         s.CINEMAS = [CinemaConfig(**c) for c in data.get("cinemas", [])]
+        sync_cfg = data.get("sync_settings", {})
+        s.SYNC_DAYS_TO_USCITO = int(os.getenv("SYNC_DAYS_TO_USCITO", str(sync_cfg.get("days_to_uscito", 7))))
+        s.SYNC_DAYS_TO_USCITO_EVENTO = int(
+            os.getenv("SYNC_DAYS_TO_USCITO_EVENTO", str(sync_cfg.get("days_to_uscito_evento", 3)))
+        )
+    else:
+        s.SYNC_DAYS_TO_USCITO = int(os.getenv("SYNC_DAYS_TO_USCITO", "7"))
+        s.SYNC_DAYS_TO_USCITO_EVENTO = int(os.getenv("SYNC_DAYS_TO_USCITO_EVENTO", "3"))
 
     return s
+
 
 
 settings = _load_settings()
