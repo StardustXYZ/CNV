@@ -1,0 +1,12 @@
+<div class="vote-buttons" id="vote-{{ film.id }}">
+    {% for opt in votes %}
+    <button
+        hx-post="/film/{{ film.id }}/vote"
+        hx-vals='{"v": "{{ opt }}"}'
+        hx-target="#vote-{{ film.id }}"
+        hx-swap="outerHTML"
+        class="btn-vote vote-opt-{{ loop.index }}{% if film.vote == opt %} active{% endif %}"
+        title="{% if film.vote == opt %}Togli il voto{% elif opt == 'V' %}Voglio vederlo{% elif opt == '?' %}Non so{% else %}Non mi interessa{% endif %}"
+    >{{ opt }}</button>
+    {% endfor %}
+</div>

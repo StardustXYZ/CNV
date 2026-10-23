@@ -89,3 +89,11 @@ class TmdbClient:
         resp = await self._client.get("/search/movie", params=params)
         resp.raise_for_status()
         return [TmdbMovie.from_api(hit) for hit in resp.json().get("results", [])]
+
+    async def get_movie(self, tmdb_id: int) -> TmdbMovie | None:
+        """Fetch one movie by TMDB id (None if it does not exist)."""
+        resp = await self._client.get(f"/movie/{tmdb_id}", params={"api_key": self.api_key, "language": "it-IT"})
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return TmdbMovie.from_api(resp.json())

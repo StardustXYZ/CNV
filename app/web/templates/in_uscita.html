@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}In uscita{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>In uscita</h1>
+    <p class="subtitle">Film con spettacoli solo nei prossimi giorni (prevendite e anteprime).</p>
+</header>
+
+{% if cards %}
+<div class="film-grid">
+    {% for card in cards %}
+    <div class="release-group">
+        {% if card.first_date %}
+        <p class="release-date">Dal {{ card.first_date | data_lunga(today) }}</p>
+        {% endif %}
+        {% include "_film_card.html" %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">Nessun film in uscita al momento.</p>
+{% endif %}
+{% endblock %}

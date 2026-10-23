@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Da verificare{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>Da verificare</h1>
+    <p class="subtitle">
+        Film che non sono riuscito ad abbinare con certezza a TMDB.
+        Senza abbinamento non hanno locandina e non possono finire nell'export per Letterboxd.
+    </p>
+</header>
+
+{% if cards %}
+<div class="review-list">
+    {% for card in cards %}
+    {% set film = card.film %}
+    <article class="review-card" id="review-{{ film.id }}">
+        <div class="review-source">
+            <h3>{{ film.raw_title }}</h3>
+            <p class="meta">
+                {% if film.tmdb_match_status == "non_trovato" %}<span class="tag tag-warn">Non trovato</span>
+                {% else %}<span class="tag">Abbinamento incerto</span>{% endif %}
+                <span>{{ {"in_sala": "In sala", "in_uscita": "In uscita", "uscito": "Uscito"}[film.status] }}</span>
+            </p>
+            {% if card.schedule %}
+            <p class="small">{{ card.schedule[0].cinema }} · {{ card.schedule[0].days[0][0] | giorno(today) }}</p>
+            {% endif %}
+        </div>
+
+        {% if film.tmdb_match_status == "da_verificare" and film.tmdb_id %}
+        <div class="suggestion">
+            {% if film.poster_url %}<img src="{{ film.poster_url }}" alt="" class="thumb" loading="lazy">{% endif %}
+            <div>
+                <p class="small">Forse è:</p>
+                <p><b>{{ film.tmdb_title }}</b>{% if film.year %} ({{ film.year }}){% endif %}</p>
+                <a href="https://www.themoviedb.org/movie/{{ film.tmdb_id }}" target="_blank" rel="noopener" class="ext-link">Apri su TMDB ↗</a>
+                <button class="btn btn-primary"
+                        hx-post="/film/{{ film.id }}/tmdb/conferma"
+                        hx-target="#review-{{ film.id }}"
+                        hx-swap="outerHTML">Sì, è questo</button>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if tmdb_enabled %}
+        <form class="search-form"
+              hx-get="/film/{{ film.id }}/tmdb/cerca"
+              hx-target="#candidates-{{ film.id }}"
+              hx-indicator="#candidates-{{ film.id }}">
+            <input type="search" name="q" value="{{ film.raw_title }}" aria-label="Cerca su TMDB" required>
+            <button type="submit" class="btn">Cerca su TMDB</button>
+        </form>
+        <div class="candidates" id="candidates-{{ film.id }}"></div>
+        {% else %}
+        <p class="small">Aggiungi <code>TMDB_API_KEY</code> al file <code>.env</code> per cercare su TMDB.</p>
+        {% endif %}
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">Tutti i film sono abbinati a TMDB. 🎉</p>
+{% endif %}
+{% endblock %}

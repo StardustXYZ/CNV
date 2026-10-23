@@ -2,27 +2,17 @@
 {% block title %}Watchlist{% endblock %}
 
 {% block content %}
-<h1>Watchlist</h1>
-<p>Film usciti dalle sale che volevi vedere – pronti per lo streaming.</p>
+<header class="page-header">
+    <h1>Watchlist</h1>
+    <p class="subtitle">Film usciti dalle sale che avevi segnato V o ?.</p>
+</header>
 
-{% if films %}
+{% if cards %}
 <a href="/export" class="btn btn-export">📥 Esporta CSV per Letterboxd</a>
 
 <div class="film-grid">
-    {% for film in films %}
-    <div class="film-card">
-        {% if film.poster_url %}
-        <img src="{{ film.poster_url }}" alt="{{ film.raw_title }}" class="poster" loading="lazy">
-        {% else %}
-        <div class="poster placeholder">🎬</div>
-        {% endif %}
-
-        <div class="film-info">
-            <h3>{{ film.tmdb_title or film.raw_title }}</h3>
-            {% if film.year %}<span class="year">{{ film.year }}</span>{% endif %}
-            <span class="vote-badge vote-{{ film.vote }}">{{ film.vote }}</span>
-        </div>
-    </div>
+    {% for card in cards %}
+    {% include "_film_card.html" %}
     {% endfor %}
 </div>
 {% else %}
@@ -32,4 +22,3 @@
 </p>
 {% endif %}
 {% endblock %}
-

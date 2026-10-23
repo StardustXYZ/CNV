@@ -303,6 +303,60 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     db.flush()
 
 
+def _find_confirmed_twin(db: Session, film: Film, tmdb_id: int) -> Film | None:
+    return (
+        db.query(Film)
+        .filter(
+            Film.id != film.id,
+            Film.tmdb_id == tmdb_id,
+            Film.tmdb_match_status.in_([STATUS_MATCHED, STATUS_MANUAL]),
+        )
+        .order_by(Film.id)
+        .first()
+    )
+
+
+def _merge_into_older(db: Session, film: Film, twin: Film) -> tuple[Film, Film]:
+    """Merge the newer of the two films into the older one; return (survivor, merged)."""
+    survivor, other = (twin, film) if twin.id < film.id else (film, twin)
+    logger.info("Unione di '%s' in '%s' (TMDB %s)", other.raw_title, survivor.raw_title, film.tmdb_id)
+    merge_films(db, survivor, other)
+    return survivor, other
+
+
+def confirm_match(db: Session, film: Film, movie: TmdbMovie | None = None) -> Film:
+    """Confirm a TMDB match chosen by the user ("manuale"), merging any duplicate.
+
+    Without ``movie`` the current suggestion of a "da_verificare" film is confirmed.
+    Returns the surviving film (``film`` itself unless it was merged into an older one).
+    """
+    now = datetime.now(timezone.utc)
+    if movie is not None:
+        _apply_movie(film, movie, STATUS_MANUAL, 1.0, now)
+    elif film.tmdb_id is None:
+        raise ValueError("Nessun suggerimento TMDB da confermare")
+    else:
+        film.tmdb_match_status = STATUS_MANUAL
+        film.tmdb_confidence = 1.0
+        film.tmdb_checked_at = now
+
+    twin = _find_confirmed_twin(db, film, film.tmdb_id)
+    if twin is None:
+        db.flush()
+        return film
+    survivor, _ = _merge_into_older(db, film, twin)
+    return survivor
+
+
+async def search_manual(
+    searcher: MovieSearcher, query: str, reference_date: date
+) -> list[ScoredCandidate]:
+    """Search TMDB with a query typed by the user, ranked like the automatic matching."""
+    sq = build_search_query(query, reference_date=reference_date)
+    movies = await search_candidates(searcher, sq)
+    return score_candidates(movies, sq, reference_date)
+
+
 def _pending_films(db: Session, now: datetime) -> list[Film]:
     retry_before = now - timedelta(days=NOT_FOUND_RETRY_DAYS)
     return (
@@ -361,27 +415,17 @@ async def match_pending_films(db: Session, searcher: MovieSearcher, today: date 
             report.to_review.append(film)
             continue
 
-        twin = (
-            db.query(Film)
-            .filter(
-                Film.id != film.id,
-                Film.tmdb_id == best.movie.id,
-                Film.tmdb_match_status.in_([STATUS_MATCHED, STATUS_MANUAL]),
-            )
-            .order_by(Film.id)
-            .first()
-        )
+        twin = _find_confirmed_twin(db, film, best.movie.id)
         if twin is None:
             report.matched.append(film)
             continue
 
-        survivor, other = (twin, film) if twin.id < film.id else (film, twin)
-        logger.info("Unione di '%s' in '%s' (TMDB %s)", other.raw_title, survivor.raw_title, best.movie.id)
-        report.merged_titles.append((other.raw_title, survivor.raw_title))
-        other_id = other.id
-        if other in report.matched:
-            report.matched.remove(other)
-        merge_films(db, survivor, other)
+        older, newer = (twin, film) if twin.id < film.id else (film, twin)
+        report.merged_titles.append((newer.raw_title, older.raw_title))
+        other_id = newer.id
+        if newer in report.matched:
+            report.matched.remove(newer)
+        survivor, _ = _merge_into_older(db, film, twin)
         report.merges[other_id] = survivor.id
         # Older merges into the deleted film now point at the survivor
         for merged_id, target in report.merges.items():

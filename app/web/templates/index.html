@@ -1,41 +1,25 @@
 {% extends "base.html" %}
-{% block title %}In Sala{% endblock %}
+{% block title %}In sala{% endblock %}
 
 {% block content %}
-<h1>Film in sala</h1>
+<header class="page-header">
+    <h1>Film in sala</h1>
+    <nav class="chips" aria-label="Filtra per voto">
+        {% set filters = [(None, "Tutti"), ("nessuno", "Da votare"), ("V", "V"), ("?", "?"), ("X", "X")] %}
+        {% for value, label in filters %}
+        <a href="/{% if value %}?voto={{ value | urlencode }}{% endif %}" class="chip{% if voto == value %} active{% endif %}">{{ label }}</a>
+        {% endfor %}
+    </nav>
+</header>
 
-{% if films %}
+{% if cards %}
 <div class="film-grid">
-    {% for film in films %}
-    <div class="film-card">
-        {% if film.poster_url %}
-        <img src="{{ film.poster_url }}" alt="{{ film.raw_title }}" class="poster" loading="lazy">
-        {% else %}
-        <div class="poster placeholder">🎬</div>
-        {% endif %}
-
-        <div class="film-info">
-            <h3>{{ film.tmdb_title or film.raw_title }}</h3>
-            {% if film.year %}<span class="year">{{ film.year }}</span>{% endif %}
-
-            <div class="vote-buttons">
-                {% for opt in ["V", "?", "X"] %}
-                <button
-                    hx-post="/film/{{ film.id }}/vote"
-                    hx-vals='{"v": "{{ opt }}"}'
-                    hx-target="#badge-{{ film.id }}"
-                    hx-swap="innerHTML"
-                    class="btn-vote {% if film.vote == opt %}active{% endif %}"
-                >{{ opt }}</button>
-                {% endfor %}
-                <span id="badge-{{ film.id }}">
-                    <span class="vote-badge vote-{{ film.vote or 'none' }}">{{ film.vote or "–" }}</span>
-                </span>
-            </div>
-        </div>
-    </div>
+    {% for card in cards %}
+    {% include "_film_card.html" %}
     {% endfor %}
 </div>
+{% elif voto %}
+<p class="empty-state">Nessun film in sala con questo filtro.</p>
 {% else %}
 <p class="empty-state">
     Nessun film in programmazione.<br>
@@ -43,4 +27,3 @@
 </p>
 {% endif %}
 {% endblock %}
-

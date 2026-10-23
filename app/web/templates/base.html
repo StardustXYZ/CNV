@@ -4,19 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CineWatch – {% block title %}Cinema Tracker{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="https://unpkg.com/htmx.org@1.9.12"
-            integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2"
-            crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}">
+    <script src="/static/htmx.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
         <a href="/" class="logo">🎬 CineWatch</a>
         <div class="nav-links">
-            <a href="/">In Sala</a>
-            <a href="/watchlist">Watchlist</a>
-            <form method="post" action="/sync" style="display:inline">
-                <button type="submit" class="btn btn-sync">🔄 Sync</button>
+            {% set links = [
+                ("in_sala", "/", "In sala"),
+                ("in_uscita", "/in-uscita", "In uscita"),
+                ("da_verificare", "/da-verificare", "Da verificare"),
+                ("watchlist", "/watchlist", "Watchlist"),
+            ] %}
+            {% for key, href, label in links %}
+            <a href="{{ href }}" class="{% if active == key %}active{% endif %}">
+                {{ label }}
+                {% if counts[key] %}<span class="count{% if key == 'da_verificare' %} count-warn{% endif %}">{{ counts[key] }}</span>{% endif %}
+            </a>
+            {% endfor %}
+            <form method="post" action="/sync" class="sync-form">
+                <button type="submit" class="btn btn-sync" title="Scarica le programmazioni aggiornate">🔄 Sync</button>
             </form>
         </div>
     </nav>
@@ -25,7 +33,18 @@
     </main>
     <footer class="footer">
         <small>CineWatch · Cinema di Cosenza &amp; Rende</small>
+        <small class="tmdb-credit">
+            Dati e locandine da <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a>.
+            Questo prodotto usa le API di TMDB ma non è approvato né certificato da TMDB.
+        </small>
     </footer>
+    <script>
+        // Disable the Sync button while scraping, which takes a few seconds
+        document.querySelector(".sync-form").addEventListener("submit", (e) => {
+            const btn = e.target.querySelector("button");
+            btn.disabled = true;
+            btn.textContent = "⏳ Sync in corso…";
+        });
+    </script>
 </body>
 </html>
-

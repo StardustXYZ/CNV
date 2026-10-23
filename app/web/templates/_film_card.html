@@ -1,0 +1,40 @@
+{# One film: poster, title, year, upcoming screenings and vote buttons. Expects `card`. #}
+{% set film = card.film %}
+<article class="film-card">
+    {% if film.poster_url and film.is_tmdb_confirmed %}
+    <img src="{{ film.poster_url }}" alt="Locandina di {{ card.title }}" class="poster" loading="lazy" width="342" height="513">
+    {% else %}
+    <div class="poster placeholder">🎬</div>
+    {% endif %}
+
+    <div class="film-info">
+        <h3>{{ card.title }}</h3>
+        <div class="meta">
+            {% if film.year and film.is_tmdb_confirmed %}<span>{{ film.year }}</span>{% endif %}
+            {% if film.is_event %}<span class="tag">Evento</span>{% endif %}
+            {% if film.is_tmdb_confirmed %}
+            <a href="https://www.themoviedb.org/movie/{{ film.tmdb_id }}" target="_blank" rel="noopener" class="ext-link">TMDB ↗</a>
+            {% endif %}
+        </div>
+
+        {% if card.schedule %}
+        <ul class="schedule">
+            {% for s in card.schedule %}
+            <li>
+                <span class="cinema">{{ s.cinema }}</span>
+                <span class="days">
+                    {% for day, times in s.days %}
+                    <span class="day"><b>{{ day | giorno(today) }}</b> {% for t in times %}{{ t.strftime('%H:%M') }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+                    {% endfor %}
+                    {% if s.more_days %}<span class="more">+{{ s.more_days }} giorni</span>{% endif %}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% elif film.status == "in_sala" %}
+        <p class="small">Nessuno spettacolo in programma nei prossimi giorni.</p>
+        {% endif %}
+
+        {% include "_vote.html" %}
+    </div>
+</article>
