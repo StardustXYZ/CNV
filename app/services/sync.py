@@ -368,30 +368,29 @@ async def run_sync(
 
     db.flush()
 
+    # Films protected by a cinema that failed today: those present in that cinema's
+    # latest recorded snapshot, i.e. its programming as last seen before the failure.
+    # Films that had already left that cinema earlier are not protected.
+    protected_film_ids: set[int] = set()
+    for slug in failed_cinema_slugs:
+        cinema_id = cinema_map[slug].id
+        last_snap_date = (
+            db.query(func.max(DailySnapshot.sync_date))
+            .filter(DailySnapshot.cinema_id == cinema_id, DailySnapshot.sync_date <= today)
+            .scalar()
+        )
+        if last_snap_date is None:
+            continue
+        protected_film_ids.update(
+            film_id
+            for (film_id,) in db.query(DailySnapshot.film_id).filter_by(cinema_id=cinema_id, sync_date=last_snap_date)
+        )
+
     # 4. Status Determination for all films
     for film in db.query(Film).all():
         old_status = film.status
         seen_today = film.id in seen_film_ids_today
-
-        # Check if film is protected by a cinema that failed today
-        # If a cinema where this film was present in its latest snapshot failed today,
-        # do NOT consider the film missing today.
-        is_protected_by_failed_cinema = False
-        if not seen_today and failed_cinema_slugs:
-            recent_snaps = (
-                db.query(DailySnapshot)
-                .filter_by(film_id=film.id)
-                .order_by(DailySnapshot.sync_date.desc())
-                .all()
-            )
-            if recent_snaps:
-                latest_snap_date = recent_snaps[0].sync_date
-                past_cinema_ids = {s.cinema_id for s in recent_snaps if s.sync_date == latest_snap_date}
-                for cid in past_cinema_ids:
-                    c_slug = db.query(Cinema.slug).filter_by(id=cid).scalar()
-                    if c_slug in failed_cinema_slugs:
-                        is_protected_by_failed_cinema = True
-                        break
+        is_protected_by_failed_cinema = not seen_today and film.id in protected_film_ids
 
         # Event threshold
         film_is_event = is_event_film(film)

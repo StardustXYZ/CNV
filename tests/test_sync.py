@@ -593,3 +593,58 @@ async def test_scenario_rimozione_euristica_programmazione_breve(db):
     assert film.consecutive_missing_days == 4
     # Because threshold is 7 (not 3), it must STILL be in_sala!
     assert film.status == "in_sala"
+
+
+@pytest.mark.asyncio
+async def test_scenario_titolo_con_dal_non_scarta_spettacoli(db):
+    """A title containing 'DAL' (e.g. 'LONTANO DAL MARE') keeps all its showtimes."""
+    cinemas = [
+        CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="stub"),
+    ]
+    shows = [
+        ShowtimeData(cinema="andromeda", raw_title="LONTANO DAL MARE", date=date(2026, 10, 23), time=time(18, 0)),
+        ShowtimeData(cinema="andromeda", raw_title="PRADA 2", date=date(2026, 10, 23), time=time(21, 0)),
+    ]
+    res = await run_sync(db, as_of_date=date(2026, 10, 23), cinemas=cinemas, scraper_results={"andromeda": shows})
+
+    assert res.showtimes == 2
+    assert db.query(Showtime).count() == 2
+    assert {f.status for f in db.query(Film).all()} == {"in_sala"}
+
+
+@pytest.mark.asyncio
+async def test_scenario_scraper_rotto_non_resuscita_film_usciti(db):
+    """A failing scraper protects only its latest programming, not films that already left."""
+    cinemas = [
+        CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="stub"),
+    ]
+
+    # 01/09: 'Vecchio Film' is playing
+    day1 = [ShowtimeData(cinema="andromeda", raw_title="Vecchio Film", date=date(2026, 9, 1), time=time(18, 0))]
+    await run_sync(db, as_of_date=date(2026, 9, 1), cinemas=cinemas, scraper_results={"andromeda": day1})
+
+    # 21/09: only 'Altro Film' is playing -> 'Vecchio Film' missing for 20 days -> 'uscito'
+    day2 = [ShowtimeData(cinema="andromeda", raw_title="Altro Film", date=date(2026, 9, 21), time=time(18, 0))]
+    await run_sync(db, as_of_date=date(2026, 9, 21), cinemas=cinemas, scraper_results={"andromeda": day2})
+
+    vecchio = db.query(Film).filter_by(normalized_title="vecchio film").one()
+    altro = db.query(Film).filter_by(normalized_title="altro film").one()
+    assert vecchio.status == "uscito"
+
+    # 22/09: the scraper fails
+    res = await run_sync(
+        db,
+        as_of_date=date(2026, 9, 22),
+        cinemas=cinemas,
+        scraper_errors={"andromeda": RuntimeError("timeout")},
+    )
+
+    db.refresh(vecchio)
+    db.refresh(altro)
+    # 'Vecchio Film' stays 'uscito' with its original exit date
+    assert vecchio.status == "uscito"
+    assert vecchio.left_theaters_date == date(2026, 9, 21)
+    assert not any(c.change_type == "reappeared" for c in res.status_changes)
+    # 'Altro Film' (latest programming of the failed cinema) is still protected
+    assert altro.status == "in_sala"
+    assert altro.consecutive_missing_days == 0

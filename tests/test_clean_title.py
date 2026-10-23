@@ -100,3 +100,39 @@ def test_clean_title_release_from_extraction():
     assert res5 == "MAMMINA"
     assert res5.release_from is None
 
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "LONTANO DAL MARE",
+        "DAL SETTIMO CIELO",
+        "UNA DONNA DA 10",
+        "DA 5 BLOODS",
+        "PRADA 2",
+        "TRAINSPOTTING DAL 1996",
+        "SANDAL 5",
+    ],
+)
+def test_clean_title_no_release_from_inside_title(raw: str):
+    """'DA'/'DAL' words inside the title must not be read as a release date."""
+    from datetime import date
+
+    res = clean_title(raw, reference_date=date(2026, 10, 23))
+    assert res == raw
+    assert res.release_from is None
+
+
+def test_clean_title_release_from_before_duration():
+    from datetime import date
+
+    res = clean_title("AVENGERS: DOOMSDAY - DAL 16 DICEMBRE (2H30')", reference_date=date(2026, 10, 18))
+    assert res == "AVENGERS: DOOMSDAY"
+    assert res.release_from == date(2026, 12, 16)
+
+
+def test_clean_title_release_from_two_digit_year():
+    from datetime import date
+
+    res = clean_title("AVENGERS: DOOMSDAY - DAL 16 DICEMBRE 27", reference_date=date(2026, 10, 18))
+    assert res == "AVENGERS: DOOMSDAY"
+    assert res.release_from == date(2027, 12, 16)

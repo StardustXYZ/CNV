@@ -22,11 +22,11 @@ _DATE_EXPR = (
 
 _DATE_SUFFIX_PATTERN = re.compile(
     rf"(?:"
-    rf"\s*[\(\[]\s*(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?(?:dall[\'’]\s*|dal\s+|da\s+){_DATE_EXPR}\s*[\)\]]"
+    rf"\s*[\(\[]\s*(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?\b(?:dall[\'’]\s*|dal\s+|da\s+){_DATE_EXPR}\s*[\)\]]"
     rf"|"
-    rf"\s*(?:[-–—:]\s*)?(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?(?:dall[\'’]\s*|dal\s+){_DATE_EXPR}"
+    rf"\s*(?:[-–—:]\s*)?(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?\b(?:dall[\'’]\s*|dal\s+){_DATE_EXPR}"
     rf"|"
-    rf"\s*[-–—:]\s*(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?da\s+{_DATE_EXPR}"
+    rf"\s*[-–—:]\s*(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?\bda\s+{_DATE_EXPR}"
     rf")\s*$",
     flags=re.IGNORECASE,
 )
@@ -48,13 +48,13 @@ ITALIAN_MONTHS: dict[str, int] = {
 }
 
 _EXTRACT_DATE_PATTERN = re.compile(
-    rf"(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?(?:dall[\'’]\s*|dal\s+|da\s+)"
+    rf"(?:in\s+sala\s+|al\s+cinema\s+|a\s+partire\s+)?\b(?:dall[\'’]\s*|dal\s+|da\s+)"
     rf"(?:"
     rf"(?P<day_num>\d{{1,2}})[/\-](?P<month_num>\d{{1,2}})(?:[/\-](?P<year_num>\d{{2,4}}))?"
     rf"|"
-    rf"(?P<day_word>\d{{1,2}})(?:°)?(?:\s+(?:di\s+)?(?P<month_name>{_MONTHS}))?(?:\s+(?P<year_word>\d{{4}}))?"
+    rf"(?P<day_word>\d{{1,2}})(?:°)?(?:\s+(?:di\s+)?(?P<month_name>{_MONTHS}))?(?:\s+(?P<year_word>\d{{2,4}}))?"
     rf"|"
-    rf"(?P<month_only>{_MONTHS})(?:\s+(?P<year_only>\d{{4}}))?"
+    rf"(?P<month_only>{_MONTHS})(?:\s+(?P<year_only>\d{{2,4}}))?"
     rf")",
     flags=re.IGNORECASE,
 )
@@ -78,14 +78,26 @@ class CleanedTitle(str):
         return super().__repr__()
 
 
+def _parse_year(raw: str) -> int:
+    y = int(raw)
+    return 2000 + y if y < 100 else y
+
+
 def extract_release_from(text: str, reference_date: date | None = None) -> date | None:
-    """Extract release date from phrases like 'DAL 16 DICEMBRE' or 'DAL 16/12'."""
+    """Extract release date from a trailing phrase like '- DAL 16 DICEMBRE' or '(DAL 16/12)'.
+
+    Only the date suffix at the end of the title is considered, so words inside the
+    title such as 'LONTANO DAL MARE' or 'DA 5 BLOODS' are not mistaken for a date.
+    """
     if not text:
         return None
     if reference_date is None:
         reference_date = date.today()
 
-    m = _EXTRACT_DATE_PATTERN.search(text)
+    suffix = _DATE_SUFFIX_PATTERN.search(text.strip())
+    if not suffix:
+        return None
+    m = _EXTRACT_DATE_PATTERN.search(suffix.group(0))
     if not m:
         return None
 
@@ -98,8 +110,7 @@ def extract_release_from(text: str, reference_date: date | None = None) -> date 
         day = int(d["day_num"])
         month = int(d["month_num"])
         if d.get("year_num"):
-            y = int(d["year_num"])
-            year = 2000 + y if y < 100 else y
+            year = _parse_year(d["year_num"])
         else:
             if month < reference_date.month:
                 year = reference_date.year + 1
@@ -108,17 +119,17 @@ def extract_release_from(text: str, reference_date: date | None = None) -> date 
         if d.get("month_name"):
             month = ITALIAN_MONTHS.get(d["month_name"].lower(), reference_date.month)
             if d.get("year_word"):
-                year = int(d["year_word"])
+                year = _parse_year(d["year_word"])
             else:
                 if month < reference_date.month:
                     year = reference_date.year + 1
         elif d.get("year_word"):
-            year = int(d["year_word"])
+            year = _parse_year(d["year_word"])
     elif d.get("month_only"):
         month = ITALIAN_MONTHS.get(d["month_only"].lower(), reference_date.month)
         day = 1
         if d.get("year_only"):
-            year = int(d["year_only"])
+            year = _parse_year(d["year_only"])
         else:
             if month < reference_date.month:
                 year = reference_date.year + 1
@@ -145,12 +156,14 @@ def clean_title(title: str, reference_date: date | None = None) -> CleanedTitle:
     if not title:
         return CleanedTitle("", None)
 
-    release_from = extract_release_from(title, reference_date=reference_date)
     t = title.strip()
 
     # 1. Remove duration in parentheses, e.g. (1H50'), (1h40m), (2H05'), (90'), (100 min)
     t = re.sub(r"\s*\(\s*\d+\s*[hH]\s*\d*['m]?\s*\)", "", t)
     t = re.sub(r"\s*\(\s*\d+\s*(?:min|minuti|'|m)\s*\)", "", t, flags=re.IGNORECASE)
+
+    # Read the release date from the same suffix that step 2 removes
+    release_from = extract_release_from(t, reference_date=reference_date)
 
     # 2. Remove date suffixes: e.g. "- DAL 16 DICEMBRE", "- DAL 16/12", "(DAL 16 DICEMBRE)"
     t = _DATE_SUFFIX_PATTERN.sub("", t).strip()
