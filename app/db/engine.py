@@ -25,9 +25,7 @@ def init_db() -> None:
         if "films" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("films")}
             if "status" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN status VARCHAR(20) DEFAULT 'in_uscita'"))
-            if "consecutive_missing_syncs" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN consecutive_missing_syncs INTEGER DEFAULT 0"))
+                conn.execute(text("ALTER TABLE films ADD COLUMN status VARCHAR(50) DEFAULT 'in_uscita'"))
             if "left_theaters_date" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN left_theaters_date DATE"))
             if "last_seen_date" not in columns:
@@ -65,7 +63,6 @@ def init_db() -> None:
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency – yields a DB session and closes it after the request."""
-    init_db()
     db = SessionLocal()
     try:
         yield db

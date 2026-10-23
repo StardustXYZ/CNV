@@ -5,16 +5,15 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.db.engine import engine
-from app.db.models import Base
+from app.db.engine import init_db
 from app.web.routes import router
 
 
 def create_app() -> FastAPI:
     application = FastAPI(title="CineWatch", version="0.1.0")
 
-    # Create tables on first run
-    Base.metadata.create_all(bind=engine)
+    # Create tables and apply schema migrations once at startup
+    init_db()
 
     # Static assets
     static_dir = Path(__file__).parent / "web" / "static"

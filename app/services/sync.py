@@ -168,10 +168,6 @@ async def run_sync(
     Returns:
         SyncResult detailing films, showtimes, status changes, and any errors.
     """
-    from app.db.engine import init_db
-
-    init_db()
-
     today = as_of_date or date.today()
     now = datetime.now(timezone.utc)
 
@@ -202,6 +198,12 @@ async def run_sync(
         else:
             scraper_cls = SCRAPER_REGISTRY.get(cfg.scraper)
             if scraper_cls is None:
+                # Misconfiguration: treat like a failed scraper so its films are not considered missing
+                err_msg = f"Scraper sconosciuto '{cfg.scraper}' in cinemas.yaml"
+                logger.error("Cinema %s (%s): %s", cfg.name, cfg.slug, err_msg)
+                failed_cinema_slugs.add(cfg.slug)
+                sync_errors[cfg.slug] = err_msg
+                db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="error", error_message=err_msg, created_at=now))
                 continue
 
             if idx > 0 and delay_between_cinemas > 0:
@@ -283,12 +285,12 @@ async def run_sync(
 
             # Check if this screening tags the film as an EVENT (EVENTO, film evento, ANTEPRIMA)
             raw_title_low = (item.raw_title or "").lower()
-            if any(kw in raw_title_low for kw in ("evento", "anteprima")):
+            if any(kw in raw_title_low for kw in EVENT_KEYWORDS):
                 film.is_event = True
             if item.tags:
                 for t in item.tags:
                     t_low = (t or "").lower()
-                    if any(kw in t_low for kw in ("evento", "film evento", "anteprima")):
+                    if any(kw in t_low for kw in EVENT_KEYWORDS):
                         film.is_event = True
                         break
 

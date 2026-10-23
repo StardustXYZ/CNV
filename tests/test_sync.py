@@ -648,3 +648,71 @@ async def test_scenario_scraper_rotto_non_resuscita_film_usciti(db):
     # 'Altro Film' (latest programming of the failed cinema) is still protected
     assert altro.status == "in_sala"
     assert altro.consecutive_missing_days == 0
+
+
+@pytest.mark.asyncio
+async def test_run_sync_uses_scraper_registry(db, monkeypatch):
+    """Without injected results, run_sync instantiates the scraper registered in cinemas.yaml."""
+    from app.scrapers.garden import CinemaGardenScraper
+
+    fake_shows = [
+        ShowtimeData(
+            cinema="garden",
+            raw_title="AVENGERS: DOOMSDAY (2H30')",
+            date=date(2026, 10, 23),
+            time=time(21, 0),
+            sala="Sala Garden",
+            source_url="https://www.cinemagarden.net/sala.aspx?p=3042",
+        )
+    ]
+
+    async def fake_scrape(self):
+        return fake_shows
+
+    monkeypatch.setattr(CinemaGardenScraper, "scrape", fake_scrape)
+    cinemas = [CinemaConfig(slug="garden", name="Cinema Garden", url="https://example.com", scraper="garden")]
+
+    res = await run_sync(db, as_of_date=date(2026, 10, 23), cinemas=cinemas, delay_between_cinemas=0)
+
+    assert res.errors == {}
+    assert res.showtimes == 1
+    film = db.query(Film).one()
+    assert film.raw_title == "AVENGERS: DOOMSDAY"
+    assert film.status == "in_sala"
+
+
+@pytest.mark.asyncio
+async def test_run_sync_scraper_sconosciuto_registrato_come_errore(db):
+    """An unknown scraper name is reported as an error and its films are not considered missing."""
+    good = [CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="stub")]
+    day1 = [ShowtimeData(cinema="andromeda", raw_title="Film A", date=date(2026, 10, 1), time=time(18, 0))]
+    await run_sync(db, as_of_date=date(2026, 10, 1), cinemas=good, scraper_results={"andromeda": day1})
+
+    broken = [CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="inesistente")]
+    res = await run_sync(db, as_of_date=date(2026, 10, 10), cinemas=broken, delay_between_cinemas=0)
+
+    assert "inesistente" in res.errors["andromeda"]
+    sync_run = db.query(SyncRun).filter_by(sync_date=date(2026, 10, 10)).one()
+    assert sync_run.status == "error"
+    film = db.query(Film).one()
+    assert film.status == "in_sala"
+    assert film.consecutive_missing_days == 0
+
+
+@pytest.mark.asyncio
+async def test_run_sync_non_inizializza_il_db_globale(db, monkeypatch):
+    """run_sync works only on the session it receives and never touches the app database."""
+    import importlib
+
+    # app.db re-exports the `engine` object, which shadows the submodule as an attribute
+    engine_module = importlib.import_module("app.db.engine")
+
+    def fail_init_db():
+        raise AssertionError("run_sync must not call init_db")
+
+    monkeypatch.setattr(engine_module, "init_db", fail_init_db)
+    cinemas = [CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="stub")]
+    shows = [ShowtimeData(cinema="andromeda", raw_title="Film A", date=date(2026, 10, 1), time=time(18, 0))]
+
+    res = await run_sync(db, as_of_date=date(2026, 10, 1), cinemas=cinemas, scraper_results={"andromeda": shows})
+    assert res.showtimes == 1
