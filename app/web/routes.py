@@ -1,10 +1,10 @@
-"""FastAPI routes for the CineWatch web UI."""
+"""FastAPI routes for the CNV (Chi Ni Vidimu) web UI."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -16,10 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.engine import get_db
-from app.db.models import Cinema, Film, Showtime
+from app.db.models import Cinema, ComingSoon, Film, Showtime
 from app.services import export as export_service
 from app.services import sync as sync_service
 from app.services.matching import STATUS_NOT_FOUND, STATUS_REVIEW, confirm_match, search_manual
+from app.services.sync import is_event_film
 from app.services.tmdb import TmdbClient
 
 router = APIRouter()
@@ -34,7 +35,12 @@ MONTHS = [
 VOTES = ("V", "?", "X")
 VOTE_FILTERS = {"V": "V", "?": "?", "X": "X", "nessuno": None}
 REVIEW_STATUSES = (STATUS_REVIEW, STATUS_NOT_FOUND)
-DAYS_PER_CINEMA = 3
+LATE_SHOW_CUTOFF = time(6, 0)  # shows listed before this hour run after midnight
+
+
+def _now() -> datetime:
+    """Current local time (a function so tests can freeze it)."""
+    return datetime.now()
 
 
 def format_day(d: date, today: date | None = None) -> str:
@@ -78,70 +84,141 @@ async def get_tmdb() -> AsyncIterator[TmdbClient | None]:
 # ------------------------------------------------------------------
 
 
+def programme_day(now: datetime) -> date:
+    """The cinema day in progress: until 06:00 it is still the previous evening's programme."""
+    return now.date() - timedelta(days=1) if now.time() < LATE_SHOW_CUTOFF else now.date()
+
+
+def show_datetime(day: date, at: time) -> datetime:
+    """Real start of a screening listed under ``day``: shows before 06:00 run after midnight."""
+    start = datetime.combine(day, at)
+    return start + timedelta(days=1) if at < LATE_SHOW_CUTOFF else start
+
+
 @dataclass
-class CinemaSchedule:
+class SalaShows:
+    sala: str | None
+    starts: list[datetime] = field(default_factory=list)
+
+
+@dataclass
+class CinemaToday:
     cinema: str
-    days: list[tuple[date, list[time]]] = field(default_factory=list)
-    more_days: int = 0  # further days not shown
+    salas: list[SalaShows] = field(default_factory=list)
+
+
+@dataclass
+class CinemaRelease:
+    cinema: str
+    first_date: date | None  # None: announced without a date
+    announced: bool = False  # only in a coming-soon list, no showtimes yet
 
 
 @dataclass
 class FilmCard:
     film: Film
-    schedule: list[CinemaSchedule] = field(default_factory=list)
-    first_date: date | None = None  # first upcoming screening
+    today: list[CinemaToday] = field(default_factory=list)  # remaining shows of the programme day
+    cinemas: list[CinemaRelease] = field(default_factory=list)  # cinemas with upcoming shows or announcements
+    first_date: date | None = None  # first known date anywhere
+    has_shows: bool = False  # has screenings that have not started yet
+    exit_date: date | None = None  # when a film no longer programmed becomes "uscito"
 
     @property
     def title(self) -> str:
         return self.film.tmdb_title if self.film.is_tmdb_confirmed and self.film.tmdb_title else self.film.raw_title
 
+    @property
+    def announced_elsewhere(self) -> list[CinemaRelease]:
+        """Cinemas that announce the film without programming it yet."""
+        return [c for c in self.cinemas if c.announced]
 
-def _film_cards(db: Session, films: list[Film], today: date) -> list[FilmCard]:
-    """Attach the upcoming screenings (grouped by cinema and day) to each film."""
+
+def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]:
+    """Attach to each film its remaining shows today (by cinema and sala) and its cinemas."""
     cards = {f.id: FilmCard(film=f) for f in films}
     if not cards:
         return []
+    day = programme_day(now)
     rows = (
-        db.query(Showtime.film_id, Cinema.name, Showtime.date, Showtime.time)
+        db.query(Showtime.film_id, Cinema.name, Showtime.sala, Showtime.date, Showtime.time)
         .join(Cinema, Cinema.id == Showtime.cinema_id)
-        .filter(Showtime.film_id.in_(cards), Showtime.date >= today)
-        .order_by(Showtime.date, Showtime.time)
+        .filter(Showtime.film_id.in_(cards), Showtime.date >= day)
         .all()
     )
-    grouped: dict[int, dict[str, dict[date, list[time]]]] = {}
-    for film_id, cinema_name, day, at in rows:
-        times = grouped.setdefault(film_id, {}).setdefault(cinema_name, {}).setdefault(day, [])
-        if at not in times:
-            times.append(at)
 
-    for film_id, by_cinema in grouped.items():
-        card = cards[film_id]
-        for cinema_name, by_day in by_cinema.items():
-            days = list(by_day.items())
-            card.schedule.append(
-                CinemaSchedule(
-                    cinema=cinema_name,
-                    days=days[:DAYS_PER_CINEMA],
-                    more_days=max(0, len(days) - DAYS_PER_CINEMA),
-                )
+    today: dict[int, dict[str, dict[str | None, set[datetime]]]] = {}
+    first_by_cinema: dict[int, dict[str, date]] = {}
+    for film_id, cinema_name, sala, show_day, at in rows:
+        if show_day == day and show_datetime(show_day, at) >= now:
+            today.setdefault(film_id, {}).setdefault(cinema_name, {}).setdefault(sala, set()).add(
+                show_datetime(show_day, at)
             )
-            if card.first_date is None or days[0][0] < card.first_date:
-                card.first_date = days[0][0]
-        card.schedule.sort(key=lambda s: (s.days[0][0], s.cinema))
+        if show_day > day or show_datetime(show_day, at) >= now:
+            firsts = first_by_cinema.setdefault(film_id, {})
+            if cinema_name not in firsts or show_day < firsts[cinema_name]:
+                firsts[cinema_name] = show_day
+
+    announced: dict[int, dict[str, list[date]]] = {}
+    for film_id, cinema_name, release in (
+        db.query(ComingSoon.film_id, Cinema.name, ComingSoon.release_date)
+        .join(Cinema, Cinema.id == ComingSoon.cinema_id)
+        .filter(ComingSoon.film_id.in_(cards))
+    ):
+        announced.setdefault(film_id, {}).setdefault(cinema_name, [])
+        if release:
+            announced[film_id][cinema_name].append(release)
+
+    for film_id, card in cards.items():
+        for cinema_name, by_sala in today.get(film_id, {}).items():
+            salas = [SalaShows(sala=s, starts=sorted(starts)) for s, starts in by_sala.items()]
+            salas.sort(key=lambda s: (s.starts[0], s.sala or ""))
+            card.today.append(CinemaToday(cinema=cinema_name, salas=salas))
+        card.today.sort(key=lambda c: (c.salas[0].starts[0], c.cinema))
+
+        shows = first_by_cinema.get(film_id, {})
+        card.has_shows = bool(shows)
+        releases = [CinemaRelease(cinema=name, first_date=d) for name, d in shows.items()]
+        for name, dates in announced.get(film_id, {}).items():
+            if name not in shows:
+                releases.append(CinemaRelease(cinema=name, first_date=min(dates, default=None), announced=True))
+        releases.sort(key=lambda c: (c.first_date is None, c.first_date or date.max, c.cinema))
+        card.cinemas = releases
+        card.first_date = min((c.first_date for c in releases if c.first_date), default=None)
     return list(cards.values())
 
 
-def _nav_counts(db: Session) -> dict[str, int]:
+def _exit_date(film: Film) -> date | None:
+    """Day a film no longer programmed becomes "uscito" if it does not come back."""
+    if film.last_seen_date is None:
+        return None
+    threshold = settings.SYNC_DAYS_TO_USCITO_EVENTO if is_event_film(film) else settings.SYNC_DAYS_TO_USCITO
+    return film.last_seen_date + timedelta(days=threshold)
+
+
+def _films_with_upcoming_shows(db: Session, now: datetime) -> set[int]:
+    day = programme_day(now)
     return {
-        "in_sala": db.query(Film).filter_by(status="in_sala").count(),
-        "in_uscita": db.query(Film).filter_by(status="in_uscita").count(),
+        film_id
+        for film_id, show_day, at in db.query(Showtime.film_id, Showtime.date, Showtime.time).filter(Showtime.date >= day)
+        if show_day > day or show_datetime(show_day, at) >= now
+    }
+
+
+def _nav_counts(db: Session) -> dict[str, int]:
+    upcoming = _films_with_upcoming_shows(db, _now())
+    announced = {film_id for (film_id,) in db.query(ComingSoon.film_id).distinct()}
+    in_sala = {film_id for (film_id,) in db.query(Film.id).filter_by(status="in_sala")}
+    in_uscita = {film_id for (film_id,) in db.query(Film.id).filter_by(status="in_uscita")}
+    return {
+        "in_sala": len(in_sala & upcoming),
+        "in_uscita": len(in_uscita & (upcoming | announced)),
         "da_verificare": db.query(Film).filter(Film.tmdb_match_status.in_(REVIEW_STATUSES)).count(),
         "watchlist": db.query(Film).filter(Film.status == "uscito", Film.vote.in_(["V", "?"])).count(),
     }
 
 
 def _render(request: Request, db: Session, name: str, active: str, **context) -> HTMLResponse:
-    context.update(active=active, counts=_nav_counts(db), today=date.today(), votes=VOTES)
+    context.update(active=active, counts=_nav_counts(db), today=_now().date(), votes=VOTES)
     return templates.TemplateResponse(request, name, context)
 
 
@@ -163,22 +240,31 @@ def _is_htmx(request: Request) -> bool:
 
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, voto: str | None = Query(None), db: Session = Depends(get_db)):
-    """Home page – films currently in theaters, optionally filtered by vote."""
+    """Home page – films in theaters, optionally filtered by vote.
+
+    Films without upcoming screenings are listed apart: they are only waiting out the
+    tolerance days before becoming "uscito".
+    """
     query = db.query(Film).filter_by(status="in_sala")
     if voto in VOTE_FILTERS:
         query = query.filter(Film.vote.is_(None) if voto == "nessuno" else Film.vote == VOTE_FILTERS[voto])
     else:
         voto = None
-    cards = sorted(_film_cards(db, query.all(), date.today()), key=lambda c: c.title.lower())
-    return _render(request, db, "index.html", "in_sala", cards=cards, voto=voto)
+    cards = _film_cards(db, query.all(), _now())
+    # Films still showing today first, then alphabetical
+    showing = sorted((c for c in cards if c.has_shows), key=lambda c: (not c.today, c.title.lower()))
+    gone = sorted((c for c in cards if not c.has_shows), key=lambda c: c.title.lower())
+    for card in gone:
+        card.exit_date = _exit_date(card.film)
+    return _render(request, db, "index.html", "in_sala", cards=showing, gone=gone, voto=voto)
 
 
 @router.get("/in-uscita", response_class=HTMLResponse)
 def coming_soon(request: Request, db: Session = Depends(get_db)):
-    """Films whose screenings are all in the future, soonest first."""
+    """Films not in theaters yet: future screenings or announced by a cinema, soonest first."""
     films = db.query(Film).filter_by(status="in_uscita").all()
     cards = sorted(
-        _film_cards(db, films, date.today()),
+        (c for c in _film_cards(db, films, _now()) if c.cinemas),
         key=lambda c: (c.first_date is None, c.first_date or date.max, c.title.lower()),
     )
     return _render(request, db, "in_uscita.html", "in_uscita", cards=cards)
@@ -193,7 +279,7 @@ def review(request: Request, db: Session = Depends(get_db)):
         .order_by(Film.tmdb_match_status, Film.raw_title)
         .all()
     )
-    cards = _film_cards(db, films, date.today())
+    cards = _film_cards(db, films, _now())
     return _render(request, db, "da_verificare.html", "da_verificare", cards=cards, tmdb_enabled=bool(settings.TMDB_API_KEY))
 
 

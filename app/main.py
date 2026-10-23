@@ -19,7 +19,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="CineWatch", version="0.1.0", lifespan=lifespan)
+    application = FastAPI(title="CNV – Chi Ni Vidimu", version="0.1.0", lifespan=lifespan)
 
     # Static assets
     static_dir = Path(__file__).parent / "web" / "static"

@@ -32,7 +32,7 @@ async def main_async() -> SyncResult:
 
     now = datetime.now()
     print("=" * 80)
-    print("CineWatch - Esecuzione Scraping & Sincronizzazione Database")
+    print("CNV (Chi Ni Vidimu) - Esecuzione Scraping & Sincronizzazione Database")
     print(f"Data sync: {now.strftime('%d/%m/%Y %H:%M:%S')}")
     print("=" * 80)
 
@@ -73,6 +73,11 @@ async def main_async() -> SyncResult:
                     print(f"   * {c.title}: {c.old_status} -> {c.new_status} ({c.details})")
         else:
             print("\nNessun cambio di stato per i film esistenti.")
+
+        if result.coming_soon:
+            print("\n[>] Film annunciati (prossimamente) per fonte:")
+            for source, count in result.coming_soon.items():
+                print(f"   * {source}: {count}")
 
         if result.matching is not None:
             _print_matching(result.matching)

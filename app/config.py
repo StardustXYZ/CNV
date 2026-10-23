@@ -20,6 +20,17 @@ class CinemaConfig:
     name: str
     url: str
     scraper: str
+    aliases: list[str] = field(default_factory=list)  # names used by other sites, e.g. "Cinema Sale Unical"
+
+
+@dataclass
+class ComingSoonSourceConfig:
+    """A site listing upcoming films for several cinemas (each card names its cinema)."""
+
+    slug: str
+    name: str
+    url: str
+    scraper: str
 
 
 @dataclass
@@ -27,6 +38,7 @@ class Settings:
     DATABASE_URL: str = ""
     TMDB_API_KEY: str = ""
     CINEMAS: list[CinemaConfig] = field(default_factory=list)
+    COMING_SOON_SOURCES: list[ComingSoonSourceConfig] = field(default_factory=list)
     SYNC_DAYS_TO_USCITO: int = 7
     SYNC_DAYS_TO_USCITO_EVENTO: int = 3
 
@@ -45,6 +57,7 @@ def _load_settings() -> Settings:
         with open(cinemas_path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         s.CINEMAS = [CinemaConfig(**c) for c in data.get("cinemas", [])]
+        s.COMING_SOON_SOURCES = [ComingSoonSourceConfig(**c) for c in data.get("coming_soon_sources", [])]
         sync_cfg = data.get("sync_settings", {})
         s.SYNC_DAYS_TO_USCITO = int(os.getenv("SYNC_DAYS_TO_USCITO", str(sync_cfg.get("days_to_uscito", 7))))
         s.SYNC_DAYS_TO_USCITO_EVENTO = int(

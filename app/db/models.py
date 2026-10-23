@@ -1,4 +1,4 @@
-"""ORM models – Cinema, Film, FilmAlias, Showtime, DailySnapshot, SyncRun."""
+"""ORM models – Cinema, Film, FilmAlias, ComingSoon, Showtime, DailySnapshot, SyncRun."""
 
 from __future__ import annotations
 
@@ -61,6 +61,7 @@ class Film(Base):
     showtimes: Mapped[list[Showtime]] = relationship(back_populates="film", cascade="all, delete-orphan")
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")
     aliases: Mapped[list[FilmAlias]] = relationship(back_populates="film", cascade="all, delete-orphan")
+    coming_soon: Mapped[list[ComingSoon]] = relationship(back_populates="film", cascade="all, delete-orphan")
 
     @property
     def is_tmdb_confirmed(self) -> bool:
@@ -161,6 +162,32 @@ class FilmAlias(Base):
 
     def __repr__(self) -> str:
         return f"<FilmAlias {self.normalized_title!r} -> {self.film_id}>"
+
+
+class ComingSoon(Base):
+    """A film announced by a cinema ("prossimamente"), possibly without showtimes or date yet.
+
+    One row per film, cinema and source page; rows disappear when the source stops listing them.
+    """
+
+    __tablename__ = "coming_soon"
+    __table_args__ = (UniqueConstraint("film_id", "cinema_id", "source", name="uq_coming_soon_film_cinema_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    film_id: Mapped[int] = mapped_column(ForeignKey("films.id"), index=True)
+    cinema_id: Mapped[int] = mapped_column(ForeignKey("cinemas.id"), index=True)
+    source: Mapped[str] = mapped_column(String(50))  # cinema slug or coming-soon source slug
+    release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    tags: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    source_url: Mapped[str] = mapped_column(String(500), default="")
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+
+    film: Mapped[Film] = relationship(back_populates="coming_soon")
+    cinema: Mapped[Cinema] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<ComingSoon film={self.film_id} cinema={self.cinema_id} {self.release_date} ({self.source})>"
 
 
 class Showtime(Base):

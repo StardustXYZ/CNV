@@ -1,4 +1,4 @@
-/* ===== CineWatch – minimal dark theme ===== */
+/* ===== CNV (Chi Ni Vidimu) – minimal dark theme ===== */
 
 :root {
     --bg: #121212;
@@ -50,6 +50,7 @@ code { background: var(--surface-2); padding: 0 0.3em; border-radius: 4px; }
     text-decoration: none;
     color: var(--accent);
 }
+.logo-sub { font-size: 0.8rem; font-weight: 500; font-style: italic; color: var(--text-muted); margin-left: 0.25rem; }
 .nav-links { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; align-items: center; }
 .nav-links a {
     color: var(--text);
@@ -154,12 +155,34 @@ code { background: var(--surface-2); padding: 0 0.3em; border-radius: 4px; }
 .tag-warn { background: var(--yellow); color: #000; }
 .ext-link { font-size: 0.8rem; text-decoration: none; }
 
-/* ---- Schedule ---- */
-.schedule { list-style: none; font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.35rem; }
-.schedule .cinema { display: block; color: var(--accent); font-weight: 600; }
-.schedule .days { display: flex; flex-direction: column; color: var(--text-muted); }
-.schedule .day b { color: var(--text); font-weight: 600; }
-.schedule .more { font-style: italic; }
+/* ---- Today's screenings ---- */
+.today { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.8rem; }
+.today-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.cinema { color: var(--accent); font-weight: 600; line-height: 1.3; }
+.today-sala { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.35rem; margin-top: 0.15rem; }
+.today-sala .sala { color: var(--text-muted); min-width: 4.5em; }
+.show-time {
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.no-shows { font-style: italic; }
+
+/* ---- No longer programmed ---- */
+.gone-section { margin-top: 2rem; background: var(--surface); border-radius: var(--radius); padding: 0.75rem 1rem; }
+.gone-section summary { cursor: pointer; font-weight: 600; }
+.gone-list { list-style: none; margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.gone-list li { display: grid; grid-template-columns: minmax(0, 1fr) 9rem; gap: 0 1rem; align-items: center; }
+.gone-list .small { grid-column: 1; }
+.gone-list .vote-buttons { grid-column: 2; grid-row: 1 / span 2; margin: 0; padding: 0; }
+.release-date.undated { color: var(--text-muted); }
+
+/* ---- Coming soon: cinemas ---- */
+.release-cinemas { list-style: none; display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; }
+.release-cinemas li { display: flex; flex-wrap: wrap; gap: 0 0.4rem; align-items: baseline; }
 
 /* ---- Coming soon ---- */
 .release-group { display: flex; flex-direction: column; gap: 0.4rem; }

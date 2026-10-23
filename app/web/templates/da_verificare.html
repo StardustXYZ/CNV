@@ -22,8 +22,11 @@
                 {% else %}<span class="tag">Abbinamento incerto</span>{% endif %}
                 <span>{{ {"in_sala": "In sala", "in_uscita": "In uscita", "uscito": "Uscito"}[film.status] }}</span>
             </p>
-            {% if card.schedule %}
-            <p class="small">{{ card.schedule[0].cinema }} · {{ card.schedule[0].days[0][0] | giorno(today) }}</p>
+            {% if card.cinemas %}
+            <p class="small">
+                {% for c in card.cinemas %}{{ c.cinema }}{% if not loop.last %} · {% endif %}{% endfor %}
+                — dal {{ card.first_date | giorno(today) }}
+            </p>
             {% endif %}
         </div>
 

@@ -22,7 +22,7 @@ import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.models import DailySnapshot, Film, FilmAlias, Showtime
+from app.db.models import ComingSoon, DailySnapshot, Film, FilmAlias, Showtime
 from app.services.tmdb import MovieSearcher, TmdbMovie
 from app.services.titles import normalize_title
 
@@ -62,9 +62,12 @@ _NOISE_MARKERS = [
     r"\bvos\b",
     r"\bsub(?:titolato)?\s+ita\b",
     r"\b(?:in\s+)?lingua\s+originale\b",
-    r"\b3d\b",
+    r"\b[23]d\b",
     r"\bimax\b",
+    r"\binfinity\s+vision\b",
 ]
+# A trailing year ("GODZILLA MINUS ZERO IMAX 2026") is a hint, not part of the title
+_TRAILING_YEAR = re.compile(r"\s(?P<year>(?:19|20)\d{2})\s*$")
 
 
 @dataclass
@@ -137,6 +140,11 @@ def build_search_query(title: str, reference_date: date) -> SearchQuery:
         is_reissue = is_reissue or n > 0
     for pattern in _NOISE_MARKERS:
         t = re.sub(pattern, " ", t, flags=re.IGNORECASE)
+    m = _TRAILING_YEAR.search(_tidy(t))
+    # Only a year close to now: "BLADE RUNNER 2049" or "1917" are titles
+    if m and year_hint is None and abs(int(m.group("year")) - reference_date.year) <= 1:
+        year_hint = int(m.group("year"))
+        t = _tidy(t)[: m.start()]
 
     queries: list[str] = []
     alt = re.search(r"\(([^()]+)\)", t)
@@ -220,8 +228,10 @@ async def search_candidates(searcher: MovieSearcher, sq: SearchQuery) -> list[Tm
 
 
 def _reference_date(db: Session, film: Film, today: date) -> date:
+    """When the film is (or will be) on screen: first showtime, else announced release, else today."""
     first_show = min((s.date for s in film.showtimes), default=None)
-    return first_show or today
+    announced = min((c.release_date for c in film.coming_soon if c.release_date), default=None)
+    return first_show or announced or today
 
 
 def _apply_movie(film: Film, movie: TmdbMovie, status: str, confidence: float, now: datetime) -> None:
@@ -232,6 +242,23 @@ def _apply_movie(film: Film, movie: TmdbMovie, status: str, confidence: float, n
     film.tmdb_match_status = status
     film.tmdb_confidence = round(confidence, 3)
     film.tmdb_checked_at = now
+
+
+def _utc_naive(value: datetime | None) -> datetime | None:
+    """UTC timestamps without tzinfo, as SQLite returns them: freshly created rows carry tzinfo."""
+    if value is not None and value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _latest(a: datetime | None, b: datetime | None) -> datetime | None:
+    values = [v for v in (_utc_naive(a), _utc_naive(b)) if v is not None]
+    return max(values, default=None)
+
+
+def _earliest(a: datetime | None, b: datetime | None) -> datetime | None:
+    values = [v for v in (_utc_naive(a), _utc_naive(b)) if v is not None]
+    return min(values, default=None)
 
 
 def merge_films(db: Session, survivor: Film, other: Film) -> None:
@@ -248,10 +275,23 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     for show in db.query(Showtime).filter_by(film_id=other.id).all():
         twin = survivor_shows.get((show.cinema_id, show.date, show.time, show.sala))
         if twin is not None:
-            twin.last_seen = max(twin.last_seen, show.last_seen)
+            twin.last_seen = _latest(twin.last_seen, show.last_seen)
             db.delete(show)
         else:
             show.film_id = survivor.id
+
+    survivor_coming = {
+        (c.cinema_id, c.source): c for c in db.query(ComingSoon).filter_by(film_id=survivor.id)
+    }
+    for entry in db.query(ComingSoon).filter_by(film_id=other.id).all():
+        twin = survivor_coming.get((entry.cinema_id, entry.source))
+        if twin is not None:
+            dates = [d for d in (twin.release_date, entry.release_date) if d]
+            twin.release_date = min(dates) if dates else None
+            twin.last_seen = _latest(twin.last_seen, entry.last_seen)
+            db.delete(entry)
+        else:
+            entry.film_id = survivor.id
 
     survivor_snaps = {
         (s.sync_date, s.cinema_id): s for s in db.query(DailySnapshot).filter_by(film_id=survivor.id)
@@ -280,15 +320,14 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     # Film fields
     if survivor.vote is None:
         survivor.vote = other.vote
-    survivor.first_seen = min(survivor.first_seen, other.first_seen)
-    survivor.last_seen = max(survivor.last_seen, other.last_seen)
+    survivor.first_seen = _earliest(survivor.first_seen, other.first_seen)
+    survivor.last_seen = _latest(survivor.last_seen, other.last_seen)
     if other.last_seen_date and (survivor.last_seen_date is None or other.last_seen_date > survivor.last_seen_date):
         survivor.last_seen_date = other.last_seen_date
     # Only an event if both copies were events: a regular run must not get the short threshold
     survivor.is_event = survivor.is_event and other.is_event
     survivor.letterboxd_exported = survivor.letterboxd_exported or other.letterboxd_exported
-    if other.exported_at and (survivor.exported_at is None or other.exported_at > survivor.exported_at):
-        survivor.exported_at = other.exported_at
+    survivor.exported_at = _latest(survivor.exported_at, other.exported_at)
     if survivor.status != "uscito" or other.status != "uscito":
         # Still programmed somewhere: the sync recomputes the status right after
         survivor.left_theaters_date = None
@@ -298,7 +337,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
 
     db.flush()
     db.expire(other)
-    db.expire(survivor, ["showtimes", "snapshots", "aliases"])
+    db.expire(survivor, ["showtimes", "snapshots", "aliases", "coming_soon"])
     db.delete(other)
     db.flush()
 

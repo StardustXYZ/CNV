@@ -1,4 +1,4 @@
-"""Scrapers package for CineWatch."""
+"""Scrapers package for CNV (Chi Ni Vidimu)."""
 
 from app.scrapers.base import (
     BaseScraper,

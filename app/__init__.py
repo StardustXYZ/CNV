@@ -1,2 +1,2 @@
-# CineWatch app package
+# CNV (Chi Ni Vidimu) app package
 

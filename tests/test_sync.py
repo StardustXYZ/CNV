@@ -672,7 +672,7 @@ async def test_run_sync_uses_scraper_registry(db, monkeypatch):
     monkeypatch.setattr(CinemaGardenScraper, "scrape", fake_scrape)
     cinemas = [CinemaConfig(slug="garden", name="Cinema Garden", url="https://example.com", scraper="garden")]
 
-    res = await run_sync(db, as_of_date=date(2026, 10, 23), cinemas=cinemas, delay_between_cinemas=0)
+    res = await run_sync(db, as_of_date=date(2026, 10, 23), cinemas=cinemas, delay_between_cinemas=0, coming_soon=[])
 
     assert res.errors == {}
     assert res.showtimes == 1
@@ -689,7 +689,7 @@ async def test_run_sync_scraper_sconosciuto_registrato_come_errore(db):
     await run_sync(db, as_of_date=date(2026, 10, 1), cinemas=good, scraper_results={"andromeda": day1})
 
     broken = [CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="inesistente")]
-    res = await run_sync(db, as_of_date=date(2026, 10, 10), cinemas=broken, delay_between_cinemas=0)
+    res = await run_sync(db, as_of_date=date(2026, 10, 10), cinemas=broken, delay_between_cinemas=0, coming_soon=[])
 
     assert "inesistente" in res.errors["andromeda"]
     sync_run = db.query(SyncRun).filter_by(sync_date=date(2026, 10, 10)).one()

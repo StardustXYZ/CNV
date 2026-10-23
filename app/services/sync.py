@@ -6,13 +6,15 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 import logging
+import re
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config import CinemaConfig, settings
-from app.db.models import Cinema, DailySnapshot, Film, FilmAlias, Showtime, SyncRun
-from app.scrapers.base import BaseScraper, ShowtimeData, clean_title
+from app.config import CinemaConfig, ComingSoonSourceConfig, settings
+from app.db.models import Cinema, ComingSoon, DailySnapshot, Film, FilmAlias, Showtime, SyncRun
+from app.scrapers.base import BaseScraper, ComingSoonData, ShowtimeData, clean_title
+from app.scrapers.cosenzacinema import CosenzaCinemaScraper
 from app.scrapers.eighteen_tickets import EighteenTicketsScraper
 from app.scrapers.garden import CinemaGardenScraper
 from app.scrapers.stub import StubScraper
@@ -30,8 +32,44 @@ SCRAPER_REGISTRY: dict[str, type[BaseScraper]] = {
     "garden": CinemaGardenScraper,
     "cinema_garden": CinemaGardenScraper,
     "cinema-garden": CinemaGardenScraper,
+    "cosenzacinema": CosenzaCinemaScraper,
 }
 
+# Coming-soon titles that are not films (film-club slots, festival names, ...)
+PLACEHOLDER_TITLES = re.compile(
+    r"^(?:rassegna|prima visione|film a sorpresa|titolo da definire|da definire)\b", flags=re.IGNORECASE
+)
+
+
+@dataclass
+class ComingSoonBatch:
+    """The coming-soon list read from one page.
+
+    ``cinema_slug`` is set for a cinema's own page; for multi-cinema sites it is None and
+    each item's ``cinema`` holds the cinema name printed on the site.
+    """
+
+    source: str
+    items: list[ComingSoonData]
+    cinema_slug: str | None = None
+
+
+def is_placeholder_title(raw_title: str) -> bool:
+    """True for coming-soon entries that are not films, e.g. "PRIMA VISIONE 2" or "RASSEGNA ALTRI SGUARDI".
+
+    Checked on the title as published: cleaning would turn "PRIMA VISIONE 2" into "2".
+    """
+    title = raw_title.strip().lstrip("#")
+    return not title or bool(PLACEHOLDER_TITLES.match(title))
+
+
+def _resolve_cinema(name: str, configs: list[CinemaConfig], cinema_map: dict[str, Cinema]) -> Cinema | None:
+    """Map a cinema name used by another site to a configured cinema (slug, name or alias)."""
+    wanted = normalize_title(name)
+    for cfg in configs:
+        if wanted in {normalize_title(n) for n in (cfg.slug, cfg.name, *cfg.aliases)}:
+            return cinema_map.get(cfg.slug)
+    return None
 
 EVENT_KEYWORDS = ("evento", "film evento", "anteprima")
 
@@ -86,6 +124,7 @@ class SyncResult:
     snapshots_created: int = 0
     snapshots_updated: int = 0
     matching: MatchReport | None = None  # None when TMDB matching was not run
+    coming_soon: dict[str, int] = field(default_factory=dict)  # source -> announced films kept
 
     def __getitem__(self, item: str):
         return getattr(self, item)
@@ -143,6 +182,107 @@ def _get_or_create_film(db: Session, raw_title: str, today: date | None = None) 
         return film, False
 
 
+async def _fetch_coming_soon(
+    cinemas: list[CinemaConfig],
+    sources: list[ComingSoonSourceConfig],
+    delay: float,
+) -> tuple[list[ComingSoonBatch], dict[str, str]]:
+    """Read the coming-soon pages of each cinema and of the multi-cinema sites.
+
+    A page that fails is reported and left out, so its known releases are kept.
+    """
+    jobs = [(cfg.slug, cfg.scraper, cfg.url, cfg.slug) for cfg in cinemas]
+    jobs += [(src.slug, src.scraper, src.url, None) for src in sources]
+    batches: list[ComingSoonBatch] = []
+    errors: dict[str, str] = {}
+    for source, scraper_name, url, cinema_slug in jobs:
+        scraper_cls = SCRAPER_REGISTRY.get(scraper_name)
+        if scraper_cls is None:
+            continue
+        if delay > 0:
+            await asyncio.sleep(delay)
+        try:
+            items = await scraper_cls(cinema_slug=source, url=url).scrape_coming_soon()
+        except Exception as err:
+            logger.warning("Pagina 'prossimamente' di %s non disponibile: %s", source, err)
+            errors[f"{source} (prossimamente)"] = str(err) or err.__class__.__name__
+            continue
+        batches.append(ComingSoonBatch(source=source, items=items, cinema_slug=cinema_slug))
+    return batches, errors
+
+
+def _apply_coming_soon(
+    db: Session,
+    batches: list[ComingSoonBatch],
+    configs: list[CinemaConfig],
+    cinema_map: dict[str, Cinema],
+    today: date,
+    now: datetime,
+) -> tuple[list[Film], dict[str, int]]:
+    """Save announced films per cinema; drop announcements a page no longer lists.
+
+    Returns the films created from announcements and the number of entries per source.
+    """
+    new_films: list[Film] = []
+    counts: dict[str, int] = {}
+    for batch in batches:
+        kept: set[int] = set()
+        for item in batch.items:
+            if batch.cinema_slug:
+                cinema = cinema_map.get(batch.cinema_slug)
+            else:
+                cinema = _resolve_cinema(item.cinema, configs, cinema_map)
+            if cinema is None:
+                logger.warning("Cinema '%s' di %s non riconosciuto: aggiungilo agli alias", item.cinema, batch.source)
+                continue
+
+            cleaned = clean_title(item.raw_title, reference_date=today)
+            if is_placeholder_title(item.raw_title) or not cleaned:
+                continue
+            norm = normalize_title(cleaned)
+            film = _find_film(db, norm)
+            if film is None:
+                film = Film(
+                    raw_title=cleaned,
+                    normalized_title=norm,
+                    status="in_uscita",
+                    in_theaters=True,
+                    first_seen=now,
+                    last_seen=now,
+                    consecutive_missing_days=0,
+                )
+                db.add(film)
+                db.flush()
+                new_films.append(film)
+
+            entry = db.query(ComingSoon).filter_by(film_id=film.id, cinema_id=cinema.id, source=batch.source).first()
+            release = item.release_date or cleaned.release_from
+            if entry is None:
+                entry = ComingSoon(film_id=film.id, cinema_id=cinema.id, source=batch.source, first_seen=now)
+                db.add(entry)
+                entry.release_date = release
+            elif entry.id in kept:
+                # Same film listed twice on the page (V.O., IMAX, ...): keep the earliest date
+                dates = [d for d in (entry.release_date, release) if d]
+                entry.release_date = min(dates) if dates else None
+            else:
+                entry.release_date = release
+            entry.tags = ", ".join(item.tags)[:200] or None
+            entry.source_url = item.source_url or ""
+            entry.last_seen = now
+            db.flush()
+            kept.add(entry.id)
+
+        stale = db.query(ComingSoon).filter(ComingSoon.source == batch.source)
+        if kept:
+            stale = stale.filter(ComingSoon.id.notin_(kept))
+        for entry in stale.all():
+            db.delete(entry)
+        counts[batch.source] = len(kept)
+    db.flush()
+    return new_films, counts
+
+
 # ------------------------------------------------------------------
 # Public API
 # ------------------------------------------------------------------
@@ -156,6 +296,8 @@ async def run_sync(
     scraper_errors: dict[str, Exception] | None = None,
     delay_between_cinemas: float = 0.5,
     matcher: MovieSearcher | None = None,
+    coming_soon: list[ComingSoonBatch] | None = None,
+    coming_soon_sources: list[ComingSoonSourceConfig] | None = None,
 ) -> SyncResult:
     """Run scrapers, update database, record snapshots, and transition film statuses.
 
@@ -168,6 +310,10 @@ async def run_sync(
         delay_between_cinemas: Pause in seconds between cinema requests.
         matcher: TMDB searcher (e.g. TmdbClient). When given, films not yet checked are
             matched to TMDB and duplicates with the same TMDB id are merged.
+        coming_soon: Pre-read coming-soon lists (tests). When None they are fetched live,
+            but only if showtimes are fetched live too (``scraper_results`` is None).
+        coming_soon_sources: Multi-cinema coming-soon sites. Default: those in
+            cinemas.yaml when using the configured cinemas, none for a custom cinema list.
 
     Returns:
         SyncResult detailing films, showtimes, status changes, and any errors.
@@ -236,6 +382,15 @@ async def run_sync(
 
         scraped_data[cfg.slug] = items
         db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="ok", showtimes_count=len(items), created_at=now))
+
+    # 1b. Coming-soon pages ("prossimamente") of each cinema and of multi-cinema sites
+    if coming_soon is None and scraper_results is None:
+        if coming_soon_sources is None:
+            coming_soon_sources = settings.COMING_SOON_SOURCES if cinemas is None else []
+        coming_soon, coming_errors = await _fetch_coming_soon(
+            target_cinemas, coming_soon_sources, delay_between_cinemas
+        )
+        sync_errors.update(coming_errors)
 
     # 2. Process showtimes for successful scrapers
     seen_film_ids_today: set[int] = set()
@@ -335,6 +490,22 @@ async def run_sync(
 
     db.flush()
 
+    # 2b. Announced films: entries per cinema, new films for titles never seen
+    coming_counts: dict[str, int] = {}
+    if coming_soon:
+        announced, coming_counts = _apply_coming_soon(db, coming_soon, target_cinemas, cinema_map, today, now)
+        for film in announced:
+            new_films.append(film)
+            status_changes.append(
+                SyncChange(
+                    film_id=film.id,
+                    title=film.raw_title,
+                    change_type="new_film",
+                    new_status="in_uscita",
+                    details="Nuovo film annunciato (prossimamente)",
+                )
+            )
+
     # 3. Record daily snapshots
     snapshots_created = 0
     snapshots_updated = 0
@@ -402,6 +573,9 @@ async def run_sync(
             for (film_id,) in db.query(DailySnapshot.film_id).filter_by(cinema_id=cinema_id, sync_date=last_snap_date)
         )
 
+    # Films announced by some cinema: they are coming back, so never "uscito"
+    announced_film_ids = {film_id for (film_id,) in db.query(ComingSoon.film_id).distinct()}
+
     # 4. Status Determination for all films
     for film in db.query(Film).all():
         old_status = film.status
@@ -444,7 +618,8 @@ async def run_sync(
         else:
             # Has showtimes today or past
             if film.consecutive_missing_days >= threshold:
-                target_status = "uscito"
+                # Gone from the programmes, but if a cinema announces it again it is coming back
+                target_status = "in_uscita" if film.id in announced_film_ids else "uscito"
             else:
                 # Tolerates gaps: remains in_sala as long as missing < threshold
                 target_status = "in_sala"
@@ -507,7 +682,11 @@ async def run_sync(
                         change_type="status_change",
                         old_status=old_status,
                         new_status="in_uscita",
-                        details="Spettacoli solo futuri (prevendita o correzione data)",
+                        details=(
+                            "Spettacoli solo futuri (prevendita o correzione data)"
+                            if all_dates and min(all_dates) > today
+                            else "Non più in programmazione ma annunciato di nuovo (prossimamente)"
+                        ),
                     )
                 )
 
@@ -523,4 +702,5 @@ async def run_sync(
         snapshots_created=snapshots_created,
         snapshots_updated=snapshots_updated,
         matching=match_report,
+        coming_soon=coming_counts,
     )

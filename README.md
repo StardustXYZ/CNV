@@ -1,4 +1,4 @@
-# 🎬 CineWatch
+# 🎬 CNV – Chi Ni Vidimu
 
 Cinema tracker personale per **Cosenza / Rende**.  
 Raccoglie le programmazioni, ti fa votare ogni film (V / ? / X) e quando un film esce da tutte le sale lo mette in una watchlist esportabile per **Letterboxd**.

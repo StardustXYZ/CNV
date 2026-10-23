@@ -19,7 +19,7 @@ import httpx
 
 from app.scrapers.base import BaseScraper, ComingSoonData, ShowtimeData, clean_title
 
-DEFAULT_USER_AGENT = "CineWatch/0.1.0 (+https://github.com/cinewatch; personal cinema tracker)"
+DEFAULT_USER_AGENT = "CNV/0.1.0 (+https://github.com/StardustXYZ/CNVTrue; personal cinema tracker)"
 DEFAULT_TIMEOUT = 15.0
 
 
@@ -194,18 +194,18 @@ class EighteenTicketsScraper(BaseScraper):
             return parse_showtimes_html(resp.text, self.cinema_slug, base_url=str(resp.url))
 
     async def scrape_coming_soon(self) -> list[ComingSoonData]:
-        """Fetch the cinema's coming soon page and parse upcoming releases."""
+        """Fetch the cinema's coming soon page and parse upcoming releases.
+
+        Network and HTTP errors are raised, so the sync can tell a failed page
+        (keep the known releases) from a page that is really empty.
+        """
         coming_soon_url = urljoin(self.url, "/coming_soon")
         headers = {"User-Agent": self.user_agent}
-        try:
-            async with httpx.AsyncClient(headers=headers, timeout=self.timeout, follow_redirects=True) as client:
-                await asyncio.sleep(0.5)  # Polite pause between requests
-                resp = await client.get(coming_soon_url)
-                if resp.status_code != 200:
-                    return []
-                return parse_coming_soon_html(resp.text, self.cinema_slug, base_url=str(resp.url))
-        except Exception:
-            return []
+        async with httpx.AsyncClient(headers=headers, timeout=self.timeout, follow_redirects=True) as client:
+            await asyncio.sleep(0.5)  # Polite pause between requests
+            resp = await client.get(coming_soon_url)
+            resp.raise_for_status()
+            return parse_coming_soon_html(resp.text, self.cinema_slug, base_url=str(resp.url))
 
 
 async def _run_cli_summary() -> None:
@@ -224,7 +224,7 @@ async def _run_cli_summary() -> None:
         return
 
     print("=" * 80)
-    print("CineWatch - Riepilogo scraping 18tickets (Cosenza/Rende)")
+    print("CNV (Chi Ni Vidimu) - Riepilogo scraping 18tickets (Cosenza/Rende)")
     print("=" * 80)
 
     rows: list[dict[str, str | int]] = []

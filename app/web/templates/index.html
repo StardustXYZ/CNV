@@ -13,6 +13,7 @@
 </header>
 
 {% if cards %}
+{% set mode = "oggi" %}
 <div class="film-grid">
     {% for card in cards %}
     {% include "_film_card.html" %}
@@ -25,5 +26,27 @@
     Nessun film in programmazione.<br>
     Premi <strong>🔄 Sync</strong> per aggiornare i dati.
 </p>
+{% endif %}
+
+{% if gone %}
+<details class="gone-section">
+    <summary>
+        Non più in programmazione <span class="count">{{ gone | length }}</span>
+        <span class="small">— spariti dai siti dei cinema, in attesa di essere segnati come usciti</span>
+    </summary>
+    <ul class="gone-list">
+        {% for card in gone %}
+        {% set film = card.film %}
+        <li>
+            <span class="gone-title">{{ card.title }}</span>
+            <span class="small">
+                {% if film.last_seen_date %}visto l'ultima volta {{ film.last_seen_date | giorno(today) }}{% endif %}
+                {% if card.exit_date %} · uscito dalle sale dal {{ card.exit_date | data_lunga(today) }} se non ricompare{% endif %}
+            </span>
+            {% include "_vote.html" %}
+        </li>
+        {% endfor %}
+    </ul>
+</details>
 {% endif %}
 {% endblock %}

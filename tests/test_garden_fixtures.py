@@ -116,11 +116,29 @@ def test_garden_29_10_schedule(garden_29_10_html: str):
     assert any(it.time == time(0, 1) and it.sala == "Sala Garden" for it in items)
 
 
-@pytest.mark.asyncio
-async def test_garden_coming_soon_ignored():
-    scraper = CinemaGardenScraper()
-    coming_soon = await scraper.scrape_coming_soon()
-    assert coming_soon == []
+def test_garden_coming_soon_titles_from_poster_names(garden_html: str):
+    from app.scrapers.garden import parse_coming_soon_html
+
+    items = parse_coming_soon_html(garden_html)
+    assert [i.raw_title for i in items] == ["Clayface", "DIO RIDE", "SE DOMANI NON TORNO"]
+    assert all(i.cinema == "Cinema Garden" and i.release_date is None for i in items)
+
+
+@pytest.mark.parametrize(
+    ("src", "title"),
+    [
+        ("https://cdn.cinemagarden.net/SE%20DOMANI%20NON%20TORNO.jpg", "SE DOMANI NON TORNO"),
+        ("https://cdn.cinemagarden.net/DIO RIDE.jpg", "DIO RIDE"),
+        ("https://cdn.cinemagarden.net/il_gatto-col-cappello.png", "il gatto col cappello"),
+        ("https://cdn.cinemagarden.net/fast1.jpg", None),
+        ("https://cdn.cinemagarden.net/locandina_03.jpg", None),
+        ("https://cdn.cinemagarden.net/123.jpg", None),
+    ],
+)
+def test_garden_title_from_poster_url(src: str, title: str | None):
+    from app.scrapers.garden import title_from_poster_url
+
+    assert title_from_poster_url(src) == title
 
 
 @pytest.mark.asyncio

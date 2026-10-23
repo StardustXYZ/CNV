@@ -4,15 +4,18 @@
 {% block content %}
 <header class="page-header">
     <h1>In uscita</h1>
-    <p class="subtitle">Film con spettacoli solo nei prossimi giorni (prevendite e anteprime).</p>
+    <p class="subtitle">Film annunciati dai cinema o con spettacoli solo futuri (prevendite e anteprime), con i cinema che li avranno.</p>
 </header>
 
 {% if cards %}
+{% set mode = "uscita" %}
 <div class="film-grid">
     {% for card in cards %}
     <div class="release-group">
         {% if card.first_date %}
         <p class="release-date">Dal {{ card.first_date | data_lunga(today) }}</p>
+        {% else %}
+        <p class="release-date undated">Data da definire</p>
         {% endif %}
         {% include "_film_card.html" %}
     </div>

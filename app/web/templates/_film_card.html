@@ -1,4 +1,6 @@
-{# One film: poster, title, year, upcoming screenings and vote buttons. Expects `card`. #}
+{# One film: poster, title, year, screenings and vote buttons.
+   Expects `card` and `mode`: "oggi" (remaining shows today by cinema and sala),
+   "uscita" (release date per cinema) or nothing (no screenings). #}
 {% set film = card.film %}
 <article class="film-card">
     {% if film.poster_url and film.is_tmdb_confirmed %}
@@ -17,22 +19,38 @@
             {% endif %}
         </div>
 
-        {% if card.schedule %}
-        <ul class="schedule">
-            {% for s in card.schedule %}
-            <li>
-                <span class="cinema">{{ s.cinema }}</span>
-                <span class="days">
-                    {% for day, times in s.days %}
-                    <span class="day"><b>{{ day | giorno(today) }}</b> {% for t in times %}{{ t.strftime('%H:%M') }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        {% if mode == "oggi" %}
+            {% if card.today %}
+            <div class="today">
+                <p class="today-label">Oggi</p>
+                {% for c in card.today %}
+                <div class="today-cinema">
+                    <p class="cinema">{{ c.cinema }}</p>
+                    {% for s in c.salas %}
+                    <p class="today-sala">
+                        <span class="sala">{{ s.sala or "Sala" }}</span>
+                        {% for start in s.starts %}<span class="show-time" data-show-at="{{ start.isoformat(timespec='minutes') }}">{{ start.strftime('%H:%M') }}</span>{% endfor %}
+                    </p>
                     {% endfor %}
-                    {% if s.more_days %}<span class="more">+{{ s.more_days }} giorni</span>{% endif %}
-                </span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="small no-shows">Oggi non ci sono altri spettacoli.</p>
+            {% endif %}
+            {% if card.announced_elsewhere %}
+            <p class="small">In arrivo anche: {% for c in card.announced_elsewhere %}{{ c.cinema }}{% if c.first_date %} (dal {{ c.first_date | data_lunga(today) }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+            {% endif %}
+        {% elif mode == "uscita" and card.cinemas %}
+        <ul class="release-cinemas">
+            {% for c in card.cinemas %}
+            <li>
+                <span class="cinema">{{ c.cinema }}</span>
+                {% if not c.first_date %}<span class="small">data da definire</span>
+                {% elif c.first_date != card.first_date %}<span class="small">dal {{ c.first_date | data_lunga(today) }}</span>{% endif %}
             </li>
             {% endfor %}
         </ul>
-        {% elif film.status == "in_sala" %}
-        <p class="small">Nessuno spettacolo in programma nei prossimi giorni.</p>
         {% endif %}
 
         {% include "_vote.html" %}

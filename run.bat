@@ -11,6 +11,6 @@ call .venv\Scripts\activate.bat
 echo 📦 Installing dependencies...
 pip install -q -e ".[dev]"
 
-echo 🎬 Starting CineWatch on http://127.0.0.1:8000
+echo 🎬 Starting CNV (Chi Ni Vidimu) on http://127.0.0.1:8000
 python -m app\main
 

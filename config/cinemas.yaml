@@ -1,35 +1,45 @@
 # Elenco cinema – aggiungi nuove voci senza toccare il codice.
 # Il campo "scraper" mappa il modulo in app/scrapers/ da usare.
+# "aliases" sono i nomi con cui altri siti chiamano il cinema (servono per le uscite di cosenzacinema.it).
 
 cinemas:
   - slug: andromeda-river
     name: "Andromeda River (Zumpano)"
     url: "https://zumpano.andromeda.andromedacinema.it/"
     scraper: 18tickets
+    aliases: ["Andromeda", "Andromeda River"]
 
   - slug: citrigno
     name: "Cinema Citrigno (Cosenza)"
     url: "https://citrigno.cosenzacinema.18tickets.it/"
     scraper: 18tickets
+    aliases: ["Cinema Citrigno", "Citrigno"]
 
   - slug: unical
     name: "Cinema Unical (Rende)"
     url: "https://unical.cosenzacinema.18tickets.it/"
     scraper: 18tickets
+    aliases: ["Cinema Sale Unical", "Sale Unical", "Cinema Unical", "Unical"]
 
   - slug: italia-tieri
     name: "Cinema Teatro Italia A. Tieri (Cosenza)"
     url: "https://cinemateatroitalia.cosenzacinema.18tickets.it/"
     scraper: 18tickets
+    aliases: ["Cinema Italia/Tieri", "Italia/Tieri", "Cinema Italia", "Teatro Italia"]
 
   - slug: garden
     name: "Cinema Garden (Rende)"
     url: "https://www.cinemagarden.net/default.aspx"
     scraper: garden
+    aliases: ["Cinema Garden", "Garden"]
+
+# Siti con le uscite di più cinema (oltre alle pagine "prossimamente" dei singoli cinema).
+coming_soon_sources:
+  - slug: cosenzacinema
+    name: "cosenzacinema.it"
+    url: "https://cosenzacinema.it/"
+    scraper: cosenzacinema
 
 sync_settings:
   days_to_uscito: 7
   days_to_uscito_evento: 3
-
-
-

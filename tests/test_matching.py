@@ -242,3 +242,21 @@ async def test_tmdb_errors_leave_films_pending(db):
     assert "interrotto" in res.matching.errors[-1]
     assert all(f.tmdb_match_status is None for f in db.query(Film).all())
     assert res.showtimes == 5  # the sync itself still completes
+
+
+@pytest.mark.asyncio
+async def test_merge_new_film_into_one_already_saved(db):
+    """A film saved earlier (naive datetimes from SQLite) merges with one created now (aware)."""
+    tmdb = FakeTmdb({"mammina": [MAMMINA], "other mommy": [MAMMINA]})
+    await run_sync(db, as_of_date=TODAY, cinemas=CINEMAS,
+                   scraper_results={"andromeda": [show("andromeda", "MAMMINA", TODAY)]}, matcher=tmdb)
+    db.expire_all()  # reload from SQLite like a later run would
+
+    next_day = TODAY + timedelta(days=1)
+    res = await run_sync(db, as_of_date=next_day, cinemas=CINEMAS, matcher=tmdb, scraper_results={
+        "andromeda": [show("andromeda", "MAMMINA", next_day)],
+        "garden": [show("garden", "mammina (other mommy)", next_day, 18)],
+    })
+
+    assert db.query(Film).count() == 1
+    assert res.matching.merged_titles == [("mammina (other mommy)", "MAMMINA")]

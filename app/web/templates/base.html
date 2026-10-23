@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CineWatch – {% block title %}Cinema Tracker{% endblock %}</title>
+    <title>CNV – {% block title %}Chi Ni Vidimu{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}">
     <script src="/static/htmx.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
-        <a href="/" class="logo">🎬 CineWatch</a>
+        <a href="/" class="logo">🎬 CNV <span class="logo-sub">Chi Ni Vidimu</span></a>
         <div class="nav-links">
             {% set links = [
                 ("in_sala", "/", "In sala"),
@@ -32,7 +32,7 @@
         {% block content %}{% endblock %}
     </main>
     <footer class="footer">
-        <small>CineWatch · Cinema di Cosenza &amp; Rende</small>
+        <small>CNV · Chi Ni Vidimu · Cinema di Cosenza &amp; Rende</small>
         <small class="tmdb-credit">
             Dati e locandine da <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a>.
             Questo prodotto usa le API di TMDB ma non è approvato né certificato da TMDB.
@@ -45,6 +45,26 @@
             btn.disabled = true;
             btn.textContent = "⏳ Sync in corso…";
         });
+
+        // Today's screenings: hide the ones that have started while the page stays open
+        function hidePastShows() {
+            const now = Date.now();
+            document.querySelectorAll("[data-show-at]").forEach((el) => {
+                if (Date.parse(el.dataset.showAt) < now) el.remove();
+            });
+            document.querySelectorAll(".today-sala").forEach((el) => {
+                if (!el.querySelector("[data-show-at]")) el.remove();
+            });
+            document.querySelectorAll(".today-cinema").forEach((el) => {
+                if (!el.querySelector(".today-sala")) el.remove();
+            });
+            document.querySelectorAll(".today").forEach((el) => {
+                if (!el.querySelector(".today-cinema")) {
+                    el.outerHTML = '<p class="small no-shows">Oggi non ci sono altri spettacoli.</p>';
+                }
+            });
+        }
+        setInterval(hidePastShows, 60 * 1000);
     </script>
 </body>
 </html>

@@ -5,22 +5,24 @@ The site is built on ASP.NET:
 - The home page displays date links for the next ~14 days.
 - Each movie details card has a link to sala.aspx?p=ID.
 - Each movie card lists showtimes with hall/room (Sala A, Sala B, Sala Garden) and anyticket.it booking links.
-- The "Prossimamente" section is intentionally ignored as it only contains titleless images.
+- The "Prossimamente" section only has posters without text or dates: titles are read
+  from the image file names (e.g. "SE DOMANI NON TORNO.jpg"), skipping opaque ones ("fast1.jpg").
 """
 
 from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime, time
+from pathlib import PurePosixPath
 import re
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 import httpx
 
 from app.scrapers.base import BaseScraper, ComingSoonData, ShowtimeData, clean_title
 
-DEFAULT_USER_AGENT = "CineWatch/0.1.0 (+https://github.com/cinewatch; personal cinema tracker)"
+DEFAULT_USER_AGENT = "CNV/0.1.0 (+https://github.com/StardustXYZ/CNVTrue; personal cinema tracker)"
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_REQUEST_DELAY = 0.5
 DEFAULT_CINEMA_NAME = "Cinema Garden"
@@ -220,6 +222,48 @@ def parse_showtimes_html(
     )
 
 
+def title_from_poster_url(src: str) -> str | None:
+    """Turn a poster URL like ".../SE%20DOMANI%20NON%20TORNO.jpg" into a title.
+
+    Returns None for names that are not titles, e.g. "fast1.jpg" or "locandina_03.png".
+    """
+    stem = PurePosixPath(unquote(urlparse(src).path)).stem
+    name = re.sub(r"[_\-]+", " ", stem)
+    name = re.sub(r"\s+", " ", name).strip()
+    if not re.search(r"[A-Za-zÀ-ÿ]{2}", name):
+        return None
+    # A single lowercase word glued to a number is a file name, not a title
+    if " " not in name and re.search(r"\d$", name):
+        return None
+    if name.lower().split()[0] in ("locandina", "poster", "banner", "prossimamente", "img", "image", "foto"):
+        return None
+    return name
+
+
+def parse_coming_soon_html(html: str, cinema_slug: str = DEFAULT_CINEMA_NAME) -> list[ComingSoonData]:
+    """Read the titles of the 'Prossimamente' posters from their file names (no dates available)."""
+    soup = BeautifulSoup(html, "html.parser")
+    stripe = soup.find(class_="prossimamente-stripe")
+    if stripe is None:
+        return []
+    items: list[ComingSoonData] = []
+    seen: set[str] = set()
+    for img in stripe.find_all("img"):
+        title = title_from_poster_url(img.get("src") or "")
+        if title is None or title.lower() in seen:
+            continue
+        seen.add(title.lower())
+        link = img.find_parent("a")
+        items.append(
+            ComingSoonData(
+                cinema=_normalize_cinema_slug(cinema_slug),
+                raw_title=title,
+                source_url=link.get("href", "") if link else "",
+            )
+        )
+    return items
+
+
 class CinemaGardenScraper(BaseScraper):
     """Scraper implementation for Cinema Garden (Rende).
 
@@ -288,12 +332,12 @@ class CinemaGardenScraper(BaseScraper):
         return all_showtimes
 
     async def scrape_coming_soon(self) -> list[ComingSoonData]:
-        """Return coming soon movies.
-
-        The 'Prossimamente' section on cinemagarden.net contains only images
-        without movie titles or release metadata, so it is ignored.
-        """
-        return []
+        """Return the films of the 'Prossimamente' banner (titles from poster file names, no dates)."""
+        headers = {"User-Agent": self.user_agent}
+        async with httpx.AsyncClient(headers=headers, timeout=self.timeout, follow_redirects=True) as client:
+            resp = await client.get(self.url)
+            resp.raise_for_status()
+            return parse_coming_soon_html(resp.text, cinema_slug=self.cinema_slug)
 
 
 # Convenient alias

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,10 +13,12 @@ from sqlalchemy.pool import StaticPool
 from app.db.engine import get_db
 from app.db.models import Base, Cinema, Film, FilmAlias, Showtime
 from app.main import create_app
+from app.web import routes
 from app.services.tmdb import TmdbMovie
-from app.web.routes import format_day, format_long_date, get_tmdb
+from app.web.routes import format_day, format_long_date, get_tmdb, programme_day, show_datetime
 
-TODAY = date.today()
+TODAY = date(2026, 10, 17)
+NOW = datetime(2026, 10, 17, 20, 0)  # Saturday 17/10, 20:00
 MAMMINA = TmdbMovie(1400837, "Mammina", "Other Mommy", date(2026, 10, 8), 199.5, "/mammina.jpg")
 
 
@@ -42,7 +44,8 @@ def session():
 
 
 @pytest.fixture()
-def client(session):
+def client(session, monkeypatch):
+    monkeypatch.setattr(routes, "_now", lambda: NOW)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: session
     app.dependency_overrides[get_tmdb] = lambda: FakeTmdb([MAMMINA])
@@ -54,9 +57,14 @@ def add_film(db, title: str, status: str, days: list[int], cinema: Cinema, **fie
     db.add(film)
     db.flush()
     for offset in days:
-        db.add(Showtime(film_id=film.id, cinema_id=cinema.id, date=TODAY + timedelta(days=offset), time=time(21, 0), source_url=""))
+        add_show(db, film, cinema, TODAY + timedelta(days=offset), time(21, 0))
     db.commit()
     return film
+
+
+def add_show(db, film: Film, cinema: Cinema, day: date, at: time, sala: str | None = "Sala 1") -> None:
+    db.add(Showtime(film_id=film.id, cinema_id=cinema.id, date=day, time=at, sala=sala, source_url=""))
+    db.commit()
 
 
 @pytest.fixture()
@@ -86,7 +94,7 @@ def test_home_shows_only_films_in_theaters(client, session, cinema):
     assert "Avengers" not in html
     assert "Vecchio" not in html
     assert "Andromeda River" in html
-    assert "oggi" in html and "21:00" in html
+    assert 'data-show-at="2026-10-17T21:00"' in html
     assert "non è approvato né certificato da TMDB" in html
     assert '<script src="/static/htmx.min.js">' in html
 
@@ -185,3 +193,134 @@ def test_static_htmx_is_served(client):
     resp = client.get("/static/htmx.min.js")
     assert resp.status_code == 200
     assert "htmx" in resp.text[:2000]
+
+
+# ------------------------------------------------------------------
+# Today's screenings and coming-soon cinemas
+# ------------------------------------------------------------------
+
+
+def test_programme_day_and_late_shows():
+    assert programme_day(datetime(2026, 10, 17, 20, 0)) == date(2026, 10, 17)
+    # At 00:30 the evening programme of the 17th is still running
+    assert programme_day(datetime(2026, 10, 18, 0, 30)) == date(2026, 10, 17)
+    assert programme_day(datetime(2026, 10, 18, 6, 0)) == date(2026, 10, 18)
+    # A 00:00 show listed under the 17th starts at midnight between the 17th and the 18th
+    assert show_datetime(date(2026, 10, 17), time(0, 0)) == datetime(2026, 10, 18, 0, 0)
+    assert show_datetime(date(2026, 10, 17), time(21, 0)) == datetime(2026, 10, 17, 21, 0)
+
+
+def test_home_shows_only_remaining_shows_of_today_by_cinema_and_sala(client, session, cinema):
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://example.com")
+    session.add(garden)
+    session.commit()
+    film = add_film(session, "Clayface", "in_sala", [], cinema)
+    # It is 20:00 on 17/10: 19:00 has started, 21:00 and 00:00 (after midnight) are still ahead
+    add_show(session, film, cinema, TODAY, time(19, 0), "Sala 1")
+    add_show(session, film, cinema, TODAY, time(21, 0), "Sala 1")
+    add_show(session, film, cinema, TODAY, time(0, 0), "Sala 1")
+    add_show(session, film, cinema, TODAY, time(22, 30), "Sala 3")
+    add_show(session, film, garden, TODAY, time(20, 30), "Sala A")
+    # Other days never appear
+    add_show(session, film, cinema, TODAY + timedelta(days=1), time(17, 0), "Sala 1")
+    add_show(session, film, cinema, TODAY - timedelta(days=1), time(21, 0), "Sala 1")
+
+    html = client.get("/").text
+    shows = [s.split('"')[0] for s in html.split('data-show-at="')[1:]]
+    assert shows == [
+        "2026-10-17T20:30",  # Garden first: its first show is the earliest
+        "2026-10-17T21:00",
+        "2026-10-18T00:00",
+        "2026-10-17T22:30",
+    ]
+    assert html.index("Cinema Garden (Rende)") < html.index("Andromeda River")
+    assert html.index("Sala 1") < html.index("Sala 3")
+    assert ">00:00<" in html
+    assert "19:00" not in html and "17:00" not in html
+
+
+def test_home_after_midnight_keeps_the_evening_programme(client, session, cinema, monkeypatch):
+    monkeypatch.setattr(routes, "_now", lambda: datetime(2026, 10, 18, 0, 30))
+    film = add_film(session, "Clayface", "in_sala", [], cinema)
+    add_show(session, film, cinema, TODAY, time(0, 0))  # started at 00:00
+    add_show(session, film, cinema, TODAY, time(1, 15))  # still to come tonight
+    add_show(session, film, cinema, TODAY + timedelta(days=1), time(16, 0))  # tomorrow afternoon
+
+    html = client.get("/").text
+    assert [s.split('"')[0] for s in html.split('data-show-at="')[1:]] == ["2026-10-18T01:15"]
+
+
+def test_home_lists_films_still_showing_today_first(client, session, cinema):
+    add_film(session, "Aaa finito per oggi", "in_sala", [1], cinema)  # only tomorrow
+    add_film(session, "Zzz stasera", "in_sala", [0], cinema)  # 21:00 today
+
+    html = client.get("/").text
+    assert html.index("Zzz stasera") < html.index("Aaa finito per oggi")
+    assert "Oggi non ci sono altri spettacoli." in html
+
+
+def test_coming_soon_lists_cinemas_with_their_dates(client, session, cinema):
+    unical = Cinema(slug="unical", name="Cinema Unical (Rende)", url="https://example.com")
+    session.add(unical)
+    session.commit()
+    film = add_film(session, "Avengers", "in_uscita", [], cinema)
+    add_show(session, film, cinema, date(2026, 12, 16), time(20, 30))
+    add_show(session, film, unical, date(2026, 12, 16), time(21, 0))
+    add_show(session, film, unical, date(2026, 12, 17), time(21, 0))
+    add_film(session, "Matrix", "in_uscita", [], cinema)
+    add_show(session, session.query(Film).filter_by(raw_title="Matrix").one(), cinema, date(2026, 10, 26), time(19, 15))
+    late = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://example.com")
+    session.add(late)
+    session.commit()
+    add_show(session, film, late, date(2026, 12, 20), time(18, 0))
+
+    html = client.get("/in-uscita").text
+    assert html.index("Matrix") < html.index("Avengers")
+    avengers = html[html.index("Avengers"):]
+    assert "Dal 16 dicembre" in html
+    assert avengers.index("Andromeda River") < avengers.index("Cinema Unical (Rende)") < avengers.index("Cinema Garden (Rende)")
+    assert "dal 20 dicembre" in avengers  # only the cinema starting later shows its own date
+    assert avengers.count("dal 16 dicembre") == 0
+    assert 'data-show-at="' not in html  # no times on the coming-soon page
+
+
+def test_home_separates_films_no_longer_programmed(client, session, cinema):
+    add_film(session, "Clayface", "in_sala", [0, 1], cinema)
+    frankie = add_film(session, "Frankie", "in_sala", [-5, -4], cinema)
+    frankie.last_seen_date = TODAY - timedelta(days=5)
+    session.commit()
+
+    html = client.get("/").text
+    grid = html[: html.index("gone-section")]
+    gone = html[html.index("gone-section"):]
+    assert "Clayface" in grid and "Frankie" not in grid
+    assert "Frankie" in gone
+    assert "uscito dalle sale dal 19 ottobre se non ricompare" in gone  # 12/10 + 7 days
+    assert '<span class="count">1</span>' in html  # nav: only Clayface is in sala
+
+
+def test_coming_soon_page_lists_announced_films(client, session, cinema):
+    from app.db.models import ComingSoon
+
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://example.com")
+    session.add(garden)
+    session.commit()
+    dio_ride = add_film(session, "DIO RIDE", "in_uscita", [], cinema)
+    it_ends = add_film(session, "IT ENDS", "in_uscita", [], cinema)
+    session.add_all([
+        ComingSoon(film_id=dio_ride.id, cinema_id=garden.id, source="garden"),
+        ComingSoon(film_id=it_ends.id, cinema_id=cinema.id, source="andromeda-river", release_date=date(2026, 10, 28)),
+    ])
+    add_film(session, "Orfano", "in_uscita", [], cinema)  # no shows, no announcement: hidden
+    clayface = add_film(session, "Clayface", "in_sala", [0], cinema)
+    session.add(ComingSoon(film_id=clayface.id, cinema_id=garden.id, source="garden"))
+    session.commit()
+
+    html = client.get("/in-uscita").text
+    assert html.index("IT ENDS") < html.index("DIO RIDE")  # dated first
+    assert "Dal 28 ottobre" in html
+    assert "Data da definire" in html and "data da definire" in html
+    assert "Orfano" not in html and "Clayface" not in html
+
+    home = client.get("/").text
+    assert "In arrivo anche: Cinema Garden (Rende)" in home

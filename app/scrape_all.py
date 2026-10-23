@@ -45,7 +45,7 @@ async def scrape_all(
         return []
 
     print("=" * 80)
-    print("CineWatch - Riepilogo scraping cinema (Cosenza/Rende)")
+    print("CNV (Chi Ni Vidimu) - Riepilogo scraping cinema (Cosenza/Rende)")
     print("=" * 80)
 
     rows: list[dict[str, str | int]] = []
