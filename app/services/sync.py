@@ -6,18 +6,19 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 import logging
-import re
-import unicodedata
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import CinemaConfig, settings
-from app.db.models import Cinema, DailySnapshot, Film, Showtime, SyncRun
-from app.scrapers.base import BaseScraper, CleanedTitle, ShowtimeData, clean_title
+from app.db.models import Cinema, DailySnapshot, Film, FilmAlias, Showtime, SyncRun
+from app.scrapers.base import BaseScraper, ShowtimeData, clean_title
 from app.scrapers.eighteen_tickets import EighteenTicketsScraper
 from app.scrapers.garden import CinemaGardenScraper
 from app.scrapers.stub import StubScraper
+from app.services.matching import MatchReport, match_pending_films
+from app.services.tmdb import MovieSearcher
+from app.services.titles import normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,6 @@ SCRAPER_REGISTRY: dict[str, type[BaseScraper]] = {
     "cinema_garden": CinemaGardenScraper,
     "cinema-garden": CinemaGardenScraper,
 }
-
-
-def normalize_title(raw: str) -> str:
-    """Lowercase, strip accents and punctuation so titles match across sources."""
-    t = raw.strip().lower()
-    t = unicodedata.normalize("NFKD", t)
-    # Remove combining diacritical marks and non-word chars (except spaces)
-    t = re.sub(r"[^\w\s]", "", t)
-    t = re.sub(r"\s+", " ", t)
-    return t.strip()
 
 
 EVENT_KEYWORDS = ("evento", "film evento", "anteprima")
@@ -94,6 +85,7 @@ class SyncResult:
     errors: dict[str, str] = field(default_factory=dict)
     snapshots_created: int = 0
     snapshots_updated: int = 0
+    matching: MatchReport | None = None  # None when TMDB matching was not run
 
     def __getitem__(self, item: str):
         return getattr(self, item)
@@ -116,10 +108,19 @@ def _get_or_create_cinema(db: Session, cfg: CinemaConfig) -> Cinema:
     return cinema
 
 
+def _find_film(db: Session, norm: str) -> Film | None:
+    """Find a film by normalized title, following aliases left by merged duplicates."""
+    film = db.query(Film).filter_by(normalized_title=norm).first()
+    if film is None:
+        alias = db.query(FilmAlias).filter_by(normalized_title=norm).first()
+        film = alias.film if alias else None
+    return film
+
+
 def _get_or_create_film(db: Session, raw_title: str, today: date | None = None) -> tuple[Film, bool]:
     cleaned = clean_title(raw_title, reference_date=today)
     norm = normalize_title(cleaned or raw_title)
-    film = db.query(Film).filter_by(normalized_title=norm).first()
+    film = _find_film(db, norm)
     now = datetime.now(timezone.utc)
     if film is None:
         film = Film(
@@ -154,6 +155,7 @@ async def run_sync(
     scraper_results: dict[str, list[ShowtimeData]] | None = None,
     scraper_errors: dict[str, Exception] | None = None,
     delay_between_cinemas: float = 0.5,
+    matcher: MovieSearcher | None = None,
 ) -> SyncResult:
     """Run scrapers, update database, record snapshots, and transition film statuses.
 
@@ -164,6 +166,8 @@ async def run_sync(
         scraper_results: Optional pre-scraped data by cinema slug (used for tests/simulations).
         scraper_errors: Optional injected scraper errors by cinema slug (used for tests).
         delay_between_cinemas: Pause in seconds between cinema requests.
+        matcher: TMDB searcher (e.g. TmdbClient). When given, films not yet checked are
+            matched to TMDB and duplicates with the same TMDB id are merged.
 
     Returns:
         SyncResult detailing films, showtimes, status changes, and any errors.
@@ -250,8 +254,7 @@ async def run_sync(
 
             # Purge eventuali spettacoli salvati in precedenza prima di release_from
             if cleaned.release_from:
-                norm = normalize_title(cleaned)
-                f_existing = db.query(Film).filter_by(normalized_title=norm).first()
+                f_existing = _find_film(db, normalize_title(cleaned))
                 if f_existing:
                     db.query(Showtime).filter(
                         Showtime.film_id == f_existing.id,
@@ -369,6 +372,17 @@ async def run_sync(
                 snapshots_created += 1
 
     db.flush()
+
+    # 3b. TMDB matching: link new films to TMDB and merge duplicates before computing statuses
+    match_report: MatchReport | None = None
+    if matcher is not None:
+        new_film_ids = [f.id for f in new_films]
+        match_report = await match_pending_films(db, matcher, today=today)
+        merges = match_report.merges
+        if merges:
+            seen_film_ids_today = {merges.get(fid, fid) for fid in seen_film_ids_today}
+            new_films = [f for f, fid in zip(new_films, new_film_ids) if fid not in merges]
+            status_changes = [c for c in status_changes if c.film_id not in merges]
 
     # Films protected by a cinema that failed today: those present in that cinema's
     # latest recorded snapshot, i.e. its programming as last seen before the failure.
@@ -508,4 +522,5 @@ async def run_sync(
         errors=sync_errors,
         snapshots_created=snapshots_created,
         snapshots_updated=snapshots_updated,
+        matching=match_report,
     )

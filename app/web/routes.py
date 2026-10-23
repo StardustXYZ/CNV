@@ -9,10 +9,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.engine import get_db
 from app.db.models import Film
 from app.services import export as export_service
 from app.services import sync as sync_service
+from app.services.tmdb import TmdbClient
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -89,7 +91,11 @@ def export_csv(db: Session = Depends(get_db)):
 
 @router.post("/sync")
 async def trigger_sync(db: Session = Depends(get_db)):
-    """Run all scrapers and redirect back to the home page."""
-    await sync_service.run_sync(db)
+    """Run all scrapers (plus TMDB matching when a key is set) and redirect to the home page."""
+    if settings.TMDB_API_KEY:
+        async with TmdbClient() as tmdb:
+            await sync_service.run_sync(db, matcher=tmdb)
+    else:
+        await sync_service.run_sync(db)
     return RedirectResponse(url="/", status_code=303)
 

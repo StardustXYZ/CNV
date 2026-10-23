@@ -1,10 +1,10 @@
-"""ORM models – Cinema, Film, Showtime, DailySnapshot, SyncRun."""
+"""ORM models – Cinema, Film, FilmAlias, Showtime, DailySnapshot, SyncRun."""
 
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Time, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -37,8 +37,13 @@ class Film(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     raw_title: Mapped[str] = mapped_column(String(300))  # Titolo pulito
     normalized_title: Mapped[str] = mapped_column(String(300), index=True)
-    tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     tmdb_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # None (da cercare) | abbinato | da_verificare | non_trovato | manuale
+    # With "da_verificare" the tmdb_* fields hold the best suggestion, not a confirmed match.
+    tmdb_match_status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    tmdb_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tmdb_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     poster_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Anno
     vote: Mapped[str | None] = mapped_column(String(1), nullable=True)  # stato_utente: V / ? / X / None
@@ -55,6 +60,11 @@ class Film(Base):
 
     showtimes: Mapped[list[Showtime]] = relationship(back_populates="film", cascade="all, delete-orphan")
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")
+    aliases: Mapped[list[FilmAlias]] = relationship(back_populates="film", cascade="all, delete-orphan")
+
+    @property
+    def is_tmdb_confirmed(self) -> bool:
+        return self.tmdb_id is not None and self.tmdb_match_status in ("abbinato", "manuale")
 
     def __init__(self, **kwargs):
         # Support Italian aliases in constructor
@@ -132,6 +142,25 @@ class Film(Base):
 
     def __repr__(self) -> str:
         return f"<Film {self.raw_title!r} status={self.status} vote={self.vote}>"
+
+
+class FilmAlias(Base):
+    """Other normalized titles of a film, kept after merging duplicates.
+
+    Lets a later scrape of e.g. "mammina (other mommy)" land on the merged "MAMMINA".
+    """
+
+    __tablename__ = "film_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    normalized_title: Mapped[str] = mapped_column(String(300), unique=True, index=True)
+    film_id: Mapped[int] = mapped_column(ForeignKey("films.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+
+    film: Mapped[Film] = relationship(back_populates="aliases")
+
+    def __repr__(self) -> str:
+        return f"<FilmAlias {self.normalized_title!r} -> {self.film_id}>"
 
 
 class Showtime(Base):

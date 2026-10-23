@@ -36,6 +36,12 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN is_event BOOLEAN DEFAULT 0"))
             if "letterboxd_exported" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN letterboxd_exported BOOLEAN DEFAULT 0"))
+            if "tmdb_match_status" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN tmdb_match_status VARCHAR(20)"))
+            if "tmdb_confidence" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN tmdb_confidence FLOAT"))
+            if "tmdb_checked_at" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN tmdb_checked_at DATETIME"))
 
         if "showtimes" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("showtimes")}
