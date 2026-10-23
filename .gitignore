@@ -27,3 +27,7 @@ tests/test_real_db.py
 .DS_Store
 Thumbs.db
 
+
+# Backups and logs
+backups/
+logs/

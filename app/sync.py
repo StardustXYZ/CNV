@@ -13,9 +13,10 @@ import sys
 from app.config import settings
 from app.db.engine import SessionLocal, init_db
 from app.db.models import Film
+from app.logging_setup import configure_logging
 from app.services.matching import MatchReport
-from app.services.sync import SyncResult, run_sync
-from app.services.tmdb import TmdbClient
+from app.services.runner import SyncAlreadyRunning, run_full_sync
+from app.services.sync import SyncResult
 
 
 def _setup_stdout_encoding() -> None:
@@ -28,6 +29,7 @@ def _setup_stdout_encoding() -> None:
 
 async def main_async() -> SyncResult:
     _setup_stdout_encoding()
+    configure_logging()
     init_db()
 
     now = datetime.now()
@@ -38,12 +40,15 @@ async def main_async() -> SyncResult:
 
     with SessionLocal() as db:
         print("\n[>] Connessione e scraping in corso...")
-        if settings.TMDB_API_KEY:
-            async with TmdbClient() as tmdb:
-                result = await run_sync(db, matcher=tmdb)
-        else:
+        if not settings.TMDB_API_KEY:
             print("[!] TMDB_API_KEY non configurata: matching TMDB saltato.")
-            result = await run_sync(db)
+        try:
+            result, log = await run_full_sync(db, "terminale")
+        except SyncAlreadyRunning:
+            print("\n[!] C'è già un sync in corso (dall'app web o da un altro terminale). Riprova tra poco.")
+            sys.exit(1)
+        if log.backup_file:
+            print(f"[OK] Backup del database: backups/{log.backup_file}")
 
         # 1. Scraper errors if any
         if result.errors:
@@ -89,7 +94,7 @@ async def main_async() -> SyncResult:
         in_sala_count = db.query(Film).filter_by(status="in_sala").count()
         in_uscita_count = db.query(Film).filter_by(status="in_uscita").count()
         usciti_count = db.query(Film).filter_by(status="uscito").count()
-        review_count = db.query(Film).filter_by(tmdb_match_status="da_verificare").count()
+        review_count = db.query(Film).filter(Film.tmdb_match_status.in_(("da_verificare", "non_trovato"))).count()
 
         print("\n" + "=" * 80)
         print(f"STATO ATTUALE DATABASE (Totale film: {result.films})")

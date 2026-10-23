@@ -324,3 +324,46 @@ def test_coming_soon_page_lists_announced_films(client, session, cinema):
 
     home = client.get("/").text
     assert "In arrivo anche: Cinema Garden (Rende)" in home
+
+
+def test_watchlist_export_flow(client, session, cinema):
+    ready = add_film(session, "Frankie", "uscito", [], cinema, vote="V", tmdb_id=10,
+                     tmdb_title="Frankie e le creature dimenticate", tmdb_match_status="abbinato", year=2026)
+    add_film(session, "Incerto", "uscito", [], cinema, vote="?", tmdb_id=11, tmdb_match_status="da_verificare")
+    add_film(session, "Non mi va", "uscito", [], cinema, vote="X", tmdb_id=12, tmdb_match_status="abbinato")
+
+    page = client.get("/watchlist").text
+    assert "Da esportare" in page and "Frankie e le creature dimenticate" in page
+    assert "1 film senza abbinamento TMDB" in page and "Incerto" in page
+    assert "Non mi va" not in page
+
+    resp = client.get("/export")
+    assert resp.headers["content-disposition"] == "attachment; filename=letterboxd_watchlist_2026-10-17.csv"
+    assert resp.text.splitlines() == ["tmdbID,Title,Year", "10,Frankie e le creature dimenticate,2026"]
+
+    resp = client.post("/watchlist/esportati", data={"film_ids": [ready.id]}, follow_redirects=False)
+    assert resp.status_code == 303
+    page = client.get("/watchlist").text
+    assert "Già esportati" in page and "Esporta di nuovo" in page
+    assert client.get("/export").text.splitlines() == ["tmdbID,Title,Year"]
+
+    client.post(f"/film/{ready.id}/esporta-di-nuovo")
+    assert len(client.get("/export").text.splitlines()) == 2
+
+
+def test_status_page(client, session, cinema):
+    from app.db.models import SyncLog, SyncRun
+
+    session.add(SyncRun(sync_date=TODAY, cinema_id=cinema.id, status="ok", showtimes_count=42))
+    session.add(SyncLog(trigger="automatico", ok=True, started_at=datetime(2026, 10, 17, 6, 0),
+                        finished_at=datetime(2026, 10, 17, 6, 2), showtimes=180, new_films=3,
+                        errors="garden (prossimamente): timeout"))
+    session.commit()
+
+    html = client.get("/stato").text
+    assert "Andromeda River" in html and ">42<" in html
+    assert "automatico" in html and "con errori" in html
+    assert "garden (prossimamente): timeout" in html
+    assert "Backup del database" in html
+    assert "C'era già un sync in corso" not in html
+    assert "C'era già un sync in corso" in client.get("/stato?occupato=1").text

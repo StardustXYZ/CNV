@@ -418,7 +418,7 @@ async def run_sync(
 
             # Scarta spettacoli precedenti a release_from
             if cleaned.release_from and item.date < cleaned.release_from:
-                logger.info(
+                logger.debug(
                     "Scartato spettacolo di '%s' al cinema %s del %s (inferiore a release_from: %s)",
                     item.raw_title,
                     slug,

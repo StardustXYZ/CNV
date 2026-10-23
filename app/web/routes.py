@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.engine import get_db
-from app.db.models import Cinema, ComingSoon, Film, Showtime
+from app.db.models import Cinema, ComingSoon, Film, Showtime, SyncLog, SyncRun
+from app.logging_setup import LOG_FILE_NAME
 from app.services import export as export_service
-from app.services import sync as sync_service
+from app.services.backup import list_backups
 from app.services.matching import STATUS_NOT_FOUND, STATUS_REVIEW, confirm_match, search_manual
+from app.services.runner import SyncAlreadyRunning, is_sync_running, run_full_sync
 from app.services.sync import is_event_film
 from app.services.tmdb import TmdbClient
 
@@ -60,6 +62,15 @@ def format_long_date(d: date, today: date | None = None) -> str:
     return text if d.year == today.year else f"{text} {d.year}"
 
 
+def format_local_time(value: datetime | None) -> str:
+    """UTC timestamp from the database shown in local time, e.g. '23/10 21:23'."""
+    if value is None:
+        return "–"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone().strftime("%d/%m %H:%M")
+
+
 def asset_version(name: str) -> int:
     """Cache-busting value for a static file: changes whenever the file is edited."""
     return int((STATIC_DIR / name).stat().st_mtime)
@@ -68,6 +79,7 @@ def asset_version(name: str) -> int:
 templates.env.filters["giorno"] = format_day
 templates.env.filters["data_lunga"] = format_long_date
 templates.env.globals["asset_version"] = asset_version
+templates.env.filters["ora_locale"] = format_local_time
 
 
 async def get_tmdb() -> AsyncIterator[TmdbClient | None]:
@@ -285,20 +297,38 @@ def review(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/watchlist", response_class=HTMLResponse)
 def watchlist(request: Request, db: Session = Depends(get_db)):
-    """Films that left theaters and were marked V or ?."""
-    films = (
-        db.query(Film)
-        .filter(Film.status == "uscito", Film.vote.in_(["V", "?"]))
-        .order_by(Film.left_theaters_date.desc(), Film.raw_title)
-        .all()
+    """Films that left theaters and were marked V or ?, split by Letterboxd export state."""
+    return _render(
+        request, db, "watchlist.html", "watchlist",
+        to_export=[FilmCard(film=f) for f in export_service.exportable_films(db)],
+        missing_tmdb=export_service.films_missing_tmdb(db),
+        exported=export_service.exported_films(db),
     )
-    cards = [FilmCard(film=f) for f in films]
-    return _render(request, db, "watchlist.html", "watchlist", cards=cards)
 
 
-# ------------------------------------------------------------------
-# Actions
-# ------------------------------------------------------------------
+@router.get("/stato", response_class=HTMLResponse)
+def status_page(request: Request, db: Session = Depends(get_db)):
+    """Sync history, last scrape of each cinema, backups and automatic sync."""
+    cinemas = []
+    for cinema in db.query(Cinema).order_by(Cinema.name):
+        runs = (
+            db.query(SyncRun).filter_by(cinema_id=cinema.id).order_by(SyncRun.created_at.desc()).limit(5).all()
+        )
+        cinemas.append({"cinema": cinema, "runs": runs})
+    scheduler = request.app.state.scheduler
+    return _render(
+        request, db, "stato.html", "stato",
+        logs=db.query(SyncLog).order_by(SyncLog.started_at.desc()).limit(15).all(),
+        cinemas=cinemas,
+        backups=list_backups(settings.BACKUPS_DIR),
+        backups_dir=settings.BACKUPS_DIR,
+        backups_keep=settings.BACKUPS_KEEP,
+        log_file=settings.LOGS_DIR / LOG_FILE_NAME,
+        scheduler=scheduler,
+        auto_sync=settings.AUTO_SYNC_ENABLED,
+        auto_sync_time=settings.AUTO_SYNC_TIME,
+        running=is_sync_running(db),
+    )
 
 
 @router.post("/film/{film_id}/vote", response_class=HTMLResponse)
@@ -370,25 +400,38 @@ async def choose_candidate(
 
 @router.get("/export")
 def export_csv(db: Session = Depends(get_db)):
-    """Download a Letterboxd-compatible CSV watchlist."""
+    """Download the Letterboxd watchlist CSV (does not mark anything as exported)."""
     csv_content = export_service.export_letterboxd_csv(db)
+    filename = f"letterboxd_watchlist_{_now():%Y-%m-%d}.csv"
     return StreamingResponse(
         iter([csv_content]),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=letterboxd_watchlist.csv"
-        },
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
+@router.post("/watchlist/esportati")
+def mark_as_exported(film_ids: list[int] = Form(default=[]), db: Session = Depends(get_db)):
+    """The user imported the CSV on Letterboxd: mark those films as exported."""
+    export_service.mark_exported(db, film_ids)
+    db.commit()
+    return RedirectResponse("/watchlist", status_code=303)
+
+
+@router.post("/film/{film_id}/esporta-di-nuovo")
+def export_again(film_id: int, db: Session = Depends(get_db)):
+    export_service.unmark_exported(db, _get_film(db, film_id))
+    db.commit()
+    return RedirectResponse("/watchlist", status_code=303)
+
+
 @router.post("/sync")
-async def trigger_sync(
-    request: Request,
-    db: Session = Depends(get_db),
-    tmdb: TmdbClient | None = Depends(get_tmdb),
-):
-    """Run all scrapers (plus TMDB matching when a key is set) and go back to the previous page."""
-    await sync_service.run_sync(db, matcher=tmdb)
+async def trigger_sync(request: Request, db: Session = Depends(get_db)):
+    """Run a full sync (backup, scrapers, TMDB matching) and go back to the previous page."""
     # Only the path of the referring page, so the redirect never leaves the app
     back = urlsplit(request.headers.get("referer") or "").path or "/"
+    try:
+        await run_full_sync(db, "manuale")
+    except SyncAlreadyRunning:
+        return RedirectResponse(url="/stato?occupato=1", status_code=303)
     return RedirectResponse(url=back, status_code=303)

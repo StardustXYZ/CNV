@@ -1,4 +1,4 @@
-"""ORM models – Cinema, Film, FilmAlias, ComingSoon, Showtime, DailySnapshot, SyncRun."""
+"""ORM models – Cinema, Film, FilmAlias, ComingSoon, Showtime, DailySnapshot, SyncRun, SyncLog."""
 
 from __future__ import annotations
 
@@ -294,3 +294,23 @@ class SyncRun(Base):
 
     def __repr__(self) -> str:
         return f"<SyncRun date={self.sync_date} cinema={self.cinema_id} status={self.status}>"
+
+
+class SyncLog(Base):
+    """One full sync (all cinemas): when, who started it, outcome and backup taken before it."""
+
+    __tablename__ = "sync_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    trigger: Mapped[str] = mapped_column(String(20))  # "manuale" | "automatico" | "terminale"
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    films_total: Mapped[int] = mapped_column(Integer, default=0)
+    new_films: Mapped[int] = mapped_column(Integer, default=0)
+    showtimes: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[str | None] = mapped_column(String(2000), nullable=True)  # one per line
+    backup_file: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<SyncLog {self.started_at} {self.trigger} ok={self.ok}>"

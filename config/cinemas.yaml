@@ -43,3 +43,10 @@ coming_soon_sources:
 sync_settings:
   days_to_uscito: 7
   days_to_uscito_evento: 3
+  # Sync automatico mentre l'app web è aperta: ogni giorno a quest'ora,
+  # e all'avvio se l'ultimo sync riuscito è più vecchio di auto_sync_catchup_hours.
+  auto_sync: true
+  auto_sync_time: "08:00"
+  auto_sync_catchup_hours: 20
+  # Copie del database tenute in backups/ (una prima di ogni sync)
+  backups_keep: 14

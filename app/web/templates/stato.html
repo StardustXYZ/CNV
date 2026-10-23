@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Stato{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>Stato</h1>
+    <p class="subtitle">Aggiornamenti, siti dei cinema e backup.</p>
+</header>
+
+{% if request.query_params.get("occupato") %}
+<section class="notice"><p>C'era già un sync in corso: aspetta che finisca e riprova.</p></section>
+{% endif %}
+
+<section class="status-grid">
+    <div class="status-tile">
+        <p class="small">Sync automatico</p>
+        {% if not auto_sync %}
+        <p><b>Disattivato</b></p>
+        <p class="small">Attivalo con <code>auto_sync: true</code> in <code>config/cinemas.yaml</code>.</p>
+        {% elif scheduler and scheduler.running or running %}
+        <p><b>⏳ In corso</b></p>
+        {% elif scheduler and scheduler.next_run %}
+        <p><b>Prossimo: {{ scheduler.next_run.strftime('%d/%m %H:%M') }}</b></p>
+        <p class="small">Ogni giorno alle {{ auto_sync_time.strftime('%H:%M') }}, finché l'app è aperta.</p>
+        {% else %}
+        <p><b>Ogni giorno alle {{ auto_sync_time.strftime('%H:%M') }}</b></p>
+        <p class="small">Parte quando avvii l'app.</p>
+        {% endif %}
+    </div>
+    <div class="status-tile">
+        <p class="small">Ultimo sync</p>
+        {% if logs %}
+        {% set last = logs[0] %}
+        <p><b>{{ last.started_at | ora_locale }}</b> · {{ last.trigger }}</p>
+        <p class="small">{% if last.finished_at is none %}in corso{% elif not last.ok %}non riuscito{% elif last.errors %}completato con errori{% else %}completato{% endif %}</p>
+        {% else %}
+        <p><b>Mai</b></p>
+        {% endif %}
+    </div>
+    <div class="status-tile">
+        <p class="small">Backup del database</p>
+        <p><b>{{ backups | length }}</b> {{ "copia" if backups | length == 1 else "copie" }} (tenute le ultime {{ backups_keep }})</p>
+        <p class="small">{% if backups %}Ultima: {{ backups[0].name }}{% else %}Nessuna ancora{% endif %}</p>
+    </div>
+</section>
+
+<h2 class="section-title">Ultimi sync</h2>
+{% if logs %}
+<div class="table-wrap">
+<table class="status-table">
+    <thead><tr><th>Inizio</th><th>Avvio</th><th>Esito</th><th>Spettacoli</th><th>Film nuovi</th><th>Errori</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+    <tr>
+        <td>{{ log.started_at | ora_locale }}</td>
+        <td>{{ log.trigger }}</td>
+        <td>
+            {% if log.finished_at is none %}<span class="tag">in corso</span>
+            {% elif not log.ok %}<span class="tag tag-bad">non riuscito</span>
+            {% elif log.errors %}<span class="tag tag-warn">con errori</span>
+            {% else %}<span class="tag tag-ok">ok</span>{% endif %}
+        </td>
+        <td>{{ log.showtimes }}</td>
+        <td>{{ log.new_films }}</td>
+        <td class="small">{% if log.errors %}{{ log.errors | replace("\n", " · ") }}{% else %}–{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="small">Nessun sync registrato. Premi <b>🔄 Sync</b> per il primo.</p>
+{% endif %}
+
+<h2 class="section-title">Cinema</h2>
+<div class="table-wrap">
+<table class="status-table">
+    <thead><tr><th>Cinema</th><th>Ultimo scraping</th><th>Esito</th><th>Spettacoli letti</th></tr></thead>
+    <tbody>
+    {% for row in cinemas %}
+    {% set run = row.runs[0] if row.runs else none %}
+    <tr>
+        <td><a href="{{ row.cinema.url }}" target="_blank" rel="noopener">{{ row.cinema.name }}</a></td>
+        <td>{% if run %}{{ run.created_at | ora_locale }}{% else %}–{% endif %}</td>
+        <td>
+            {% if not run %}–
+            {% elif run.status == "ok" %}<span class="tag tag-ok">ok</span>
+            {% elif run.status == "empty_anomaly" %}<span class="tag tag-warn" title="{{ run.error_message }}">0 spettacoli</span>
+            {% else %}<span class="tag tag-bad" title="{{ run.error_message }}">errore</span>{% endif %}
+        </td>
+        <td>{% if run %}{{ run.showtimes_count }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<p class="small log-path">Log dettagliato: <code>{{ log_file }}</code> · Backup in <code>{{ backups_dir }}</code></p>
+{% endblock %}

@@ -4,21 +4,65 @@
 {% block content %}
 <header class="page-header">
     <h1>Watchlist</h1>
-    <p class="subtitle">Film usciti dalle sale che avevi segnato V o ?.</p>
+    <p class="subtitle">Film usciti da tutte le sale che avevi segnato V o ?, da aggiungere alla watchlist di Letterboxd.</p>
 </header>
 
-{% if cards %}
-<a href="/export" class="btn btn-export">📥 Esporta CSV per Letterboxd</a>
+{% if to_export %}
+<section class="export-box">
+    <h2>Da esportare <span class="count">{{ to_export | length }}</span></h2>
+    <ol class="steps">
+        <li>Scarica il file CSV.</li>
+        <li>Importalo nella tua watchlist su Letterboxd (importazione da CSV).</li>
+        <li>Torna qui e segna i film come esportati, così non finiscono nel prossimo file.</li>
+    </ol>
+    <div class="export-actions">
+        <a href="/export" class="btn btn-export" download>📥 Scarica CSV per Letterboxd</a>
+        <form method="post" action="/watchlist/esportati">
+            {% for card in to_export %}<input type="hidden" name="film_ids" value="{{ card.film.id }}">{% endfor %}
+            <button type="submit" class="btn" onclick="return confirm('Hai importato il file su Letterboxd?')">✓ Li ho importati su Letterboxd</button>
+        </form>
+    </div>
+</section>
 
 <div class="film-grid">
-    {% for card in cards %}
+    {% for card in to_export %}
     {% include "_film_card.html" %}
     {% endfor %}
 </div>
-{% else %}
+{% endif %}
+
+{% if missing_tmdb %}
+<section class="notice">
+    <p>
+        <b>{{ missing_tmdb | length }} film senza abbinamento TMDB</b> non sono nel file, perché Letterboxd
+        potrebbe confonderli con un altro film:
+        {% for film in missing_tmdb %}<i>{{ film.raw_title }}</i>{% if not loop.last %}, {% endif %}{% endfor %}.
+        Abbinali dalla pagina <a href="/da-verificare">Da verificare</a>.
+    </p>
+</section>
+{% endif %}
+
+{% if not to_export and not missing_tmdb %}
 <p class="empty-state">
-    Nessun film nella watchlist per ora.<br>
+    Nessun film da esportare per ora.<br>
     Quando un film segnato <strong>V</strong> o <strong>?</strong> esce da tutte le sale, apparirà qui.
 </p>
+{% endif %}
+
+{% if exported %}
+<details class="gone-section">
+    <summary>Già esportati <span class="count">{{ exported | length }}</span></summary>
+    <ul class="gone-list">
+        {% for film in exported %}
+        <li>
+            <span class="gone-title">{{ film.tmdb_title or film.raw_title }}{% if film.year %} ({{ film.year }}){% endif %}</span>
+            <span class="small">esportato il {{ film.exported_at | ora_locale }}</span>
+            <form method="post" action="/film/{{ film.id }}/esporta-di-nuovo" class="inline-form">
+                <button type="submit" class="btn">Esporta di nuovo</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</details>
 {% endif %}
 {% endblock %}
