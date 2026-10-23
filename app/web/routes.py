@@ -34,9 +34,7 @@ def index(request: Request, db: Session = Depends(get_db)):
         .order_by(Film.raw_title)
         .all()
     )
-    return templates.TemplateResponse(
-        "index.html", {"request": request, "films": films}
-    )
+    return templates.TemplateResponse(request, "index.html", {"films": films})
 
 
 @router.get("/watchlist", response_class=HTMLResponse)
@@ -49,9 +47,7 @@ def watchlist(request: Request, db: Session = Depends(get_db)):
         .order_by(Film.last_seen.desc())
         .all()
     )
-    return templates.TemplateResponse(
-        "watchlist.html", {"request": request, "films": films}
-    )
+    return templates.TemplateResponse(request, "watchlist.html", {"films": films})
 
 
 # ------------------------------------------------------------------
