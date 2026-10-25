@@ -25,7 +25,17 @@ chmod +x run.sh
 ./run.sh
 ```
 
-Lo script crea il virtualenv, installa le dipendenze e apre l'app su **http://127.0.0.1:8000**.
+Lo script crea il virtualenv, installa le dipendenze, avvia l'app e apre da solo il browser su **http://127.0.0.1:8000**. Se l'app è già accesa apre solo il browser.
+
+### Icona sul Desktop (Windows)
+
+Per avere sul Desktop l'icona **CNV** che avvia l'app con un doppio clic:
+
+```bat
+powershell -ExecutionPolicy Bypass -File crea_collegamento.ps1
+```
+
+Il collegamento avvia `run.bat` con la finestra ridotta a icona: per chiudere l'app chiudi quella finestra dalla barra delle applicazioni. Dal Desktop puoi anche aggiungerlo alla barra (tasto destro → Mostra altre opzioni → Aggiungi alla barra delle applicazioni).
 
 ### Avvio manuale
 

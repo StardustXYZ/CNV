@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -248,6 +248,12 @@ def _is_htmx(request: Request) -> bool:
 # ------------------------------------------------------------------
 # Pages
 # ------------------------------------------------------------------
+
+
+@router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """The CNV icon, also used by the desktop shortcut."""
+    return FileResponse(STATIC_DIR / "cnv.ico", media_type="image/x-icon")
 
 
 @router.get("/", response_class=HTMLResponse)

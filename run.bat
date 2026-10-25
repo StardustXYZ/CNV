@@ -13,10 +13,10 @@ echo Controllo le dipendenze ...
 if errorlevel 1 goto error
 
 echo.
-echo Avvio CNV (Chi Ni Vidimu): apri http://127.0.0.1:8000 nel browser.
-echo Lascia aperta questa finestra; per chiudere l'app premi Ctrl+C.
+echo Avvio CNV (Chi Ni Vidimu): il browser si apre da solo su http://127.0.0.1:8000
+echo Lascia aperta questa finestra; per chiudere l'app premi Ctrl+C o chiudila.
 echo.
-".venv\Scripts\python.exe" -m app.main
+".venv\Scripts\python.exe" -m app.launcher
 if errorlevel 1 goto error
 goto :eof
 

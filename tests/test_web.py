@@ -367,3 +367,23 @@ def test_status_page(client, session, cinema):
     assert "Backup del database" in html
     assert "C'era già un sync in corso" not in html
     assert "C'era già un sync in corso" in client.get("/stato?occupato=1").text
+
+
+def test_favicon_is_served(client):
+    resp = client.get("/favicon.ico")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/x-icon"
+    assert resp.content[:4] == b"\x00\x00\x01\x00"  # ICO header
+
+
+def test_launcher_detects_a_running_server():
+    import socket
+
+    from app.launcher import is_running
+
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        assert is_running(port=port)
+    assert not is_running(port=port)
