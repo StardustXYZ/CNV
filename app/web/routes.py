@@ -215,7 +215,10 @@ def _nav_counts(db: Session) -> dict[str, int]:
         "in_sala": len(in_sala & upcoming),
         "in_uscita": len(in_uscita & (upcoming | announced)),
         "da_verificare": db.query(Film).filter(Film.tmdb_match_status.in_(REVIEW_STATUSES)).count(),
-        "watchlist": db.query(Film).filter(Film.status == "uscito", Film.vote.in_(["V", "?"])).count(),
+        # Only what is still to export: films already imported on Letterboxd are done
+        "watchlist": db.query(Film)
+        .filter(Film.status == "uscito", Film.vote.in_(["V", "?"]), Film.letterboxd_exported.is_(False))
+        .count(),
     }
 
 
@@ -233,6 +236,16 @@ def _get_film(db: Session, film_id: int) -> Film:
 
 def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
+
+
+def _safe_path(value: str | None) -> str | None:
+    """A path inside the app ("/in-uscita"), or None: never a link to another site."""
+    if not value:
+        return None
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc or not parts.path.startswith("/") or parts.path.startswith("//"):
+        return None
+    return parts.path + (f"?{parts.query}" if parts.query else "")
 
 
 # ------------------------------------------------------------------
@@ -355,12 +368,23 @@ async def search_tmdb(
     request: Request,
     film_id: int,
     q: str = Query(""),
+    dopo: str = Query(""),
     db: Session = Depends(get_db),
     tmdb: TmdbClient | None = Depends(get_tmdb),
 ):
-    """Search TMDB with the user's query and return candidates as an htmx partial."""
+    """Search TMDB with the user's query and return candidates as an htmx partial.
+
+    ``dopo`` is the page to go back to once a candidate is chosen (the "cambia
+    abbinamento" page); without it the review card simply disappears.
+    """
     film = _get_film(db, film_id)
-    context: dict = {"film": film, "candidates": [], "error": None, "query": q.strip()}
+    context: dict = {
+        "film": film,
+        "candidates": [],
+        "error": None,
+        "query": q.strip(),
+        "next_url": _safe_path(dopo),
+    }
     if tmdb is None:
         context["error"] = "Chiave TMDB non configurata."
     elif context["query"]:
@@ -376,6 +400,7 @@ async def choose_candidate(
     request: Request,
     film_id: int,
     tmdb_id: int = Form(...),
+    dopo: str = Form(""),
     db: Session = Depends(get_db),
     tmdb: TmdbClient | None = Depends(get_tmdb),
 ):
@@ -391,7 +416,27 @@ async def choose_candidate(
         raise HTTPException(status_code=404, detail="Film TMDB non trovato")
     confirm_match(db, film, movie)
     db.commit()
+
+    next_url = _safe_path(dopo)
+    if next_url:
+        if _is_htmx(request):
+            return Response(status_code=200, headers={"HX-Redirect": next_url})
+        return RedirectResponse(next_url, status_code=303)
     return Response(status_code=200) if _is_htmx(request) else RedirectResponse("/da-verificare", status_code=303)
+
+
+@router.get("/film/{film_id}/abbinamento", response_class=HTMLResponse)
+def change_match(request: Request, film_id: int, db: Session = Depends(get_db)):
+    """Fix a wrong TMDB match: search the right film and choose it."""
+    film = _get_film(db, film_id)
+    # Back to the CNV page the user came from (never to another site)
+    ref = urlsplit(request.headers.get("referer") or "")
+    from_cnv = ref.netloc == request.headers.get("host")
+    referer = _safe_path(ref.path + (f"?{ref.query}" if ref.query else "")) if from_cnv else None
+    back = referer if referer and "/abbinamento" not in referer else "/"
+    return _render(
+        request, db, "abbinamento.html", "", film=film, back=back, tmdb_enabled=bool(settings.TMDB_API_KEY)
+    )
 
 
 @router.get("/export")

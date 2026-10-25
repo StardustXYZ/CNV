@@ -681,7 +681,9 @@ async def run_sync(
             film.status = "uscito"
             film.in_theaters = False
             if film.left_theaters_date is None:
-                film.left_theaters_date = today
+                # The day of its last screening, not the day CNV noticed (a week later)
+                past_dates = [d for d in all_dates if d <= today]
+                film.left_theaters_date = max(past_dates, default=film.last_seen_date or today)
             if old_status != "uscito":
                 status_changes.append(
                     SyncChange(

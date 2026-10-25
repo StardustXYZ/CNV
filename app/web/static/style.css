@@ -154,6 +154,9 @@ code { background: var(--surface-2); padding: 0 0.3em; border-radius: 4px; }
 .tag { padding: 0 0.4rem; border-radius: 4px; background: var(--surface-2); color: var(--text); font-size: 0.75rem; }
 .tag-warn { background: var(--yellow); color: #000; }
 .ext-link { font-size: 0.8rem; text-decoration: none; }
+.change-match { color: var(--text-muted); }
+.change-match:hover { color: var(--accent); }
+.back-link { margin-top: 1rem; }
 
 /* ---- Today's screenings ---- */
 .today { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.8rem; }

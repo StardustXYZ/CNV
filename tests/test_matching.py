@@ -279,3 +279,18 @@ async def test_unexpected_tmdb_error_skips_only_that_film(db):
     rotto = db.query(Film).filter_by(normalized_title="film rotto").one()
     assert rotto.tmdb_match_status is None  # retried next time
     assert db.query(Film).filter_by(normalized_title="mammina").one().tmdb_id == MAMMINA.id
+
+
+def test_merge_keeps_the_most_interested_vote(db):
+    from app.services.matching import merge_films
+
+    def film(title, vote):
+        f = Film(raw_title=title, normalized_title=title.lower(), vote=vote)
+        db.add(f)
+        db.flush()
+        return f
+
+    for survivor_vote, other_vote, expected in [("X", "V", "V"), ("?", "X", "?"), (None, "?", "?"), ("V", None, "V")]:
+        survivor, other = film(f"A{expected}{survivor_vote}", survivor_vote), film(f"B{expected}{other_vote}", other_vote)
+        merge_films(db, survivor, other)
+        assert survivor.vote == expected

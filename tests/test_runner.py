@@ -150,3 +150,45 @@ def test_needs_catchup():
 def test_settings_defaults():
     assert settings.AUTO_SYNC_TIME == time(8, 0)
     assert settings.BACKUPS_KEEP >= 1
+
+
+def test_ran_recently():
+    from app.services.scheduler import ran_recently
+
+    now = datetime(2026, 10, 23, 8, 0)
+    assert ran_recently(now - timedelta(minutes=10), now)  # catch-up at 07:50
+    assert not ran_recently(now - timedelta(hours=5), now)
+    assert not ran_recently(None, now)
+
+
+@pytest.mark.asyncio
+async def test_daily_sync_is_skipped_right_after_another_one(db, monkeypatch):
+    from app.services.scheduler import DailySyncScheduler
+
+    db.add(SyncLog(trigger="automatico", ok=True, started_at=utc_now() - timedelta(minutes=10), finished_at=utc_now()))
+    db.commit()
+
+    class SessionFactory:
+        def __call__(self):
+            return self
+
+        def __enter__(self):
+            return db
+
+        def __exit__(self, *exc):
+            return False
+
+    scheduler = DailySyncScheduler(SessionFactory(), time(8, 0), 20)
+    runs = []
+
+    async def fake_run():
+        runs.append("sync")
+
+    monkeypatch.setattr(scheduler, "_run", fake_run)
+    assert await scheduler.run_scheduled() is False
+    assert runs == []
+
+    db.query(SyncLog).update({SyncLog.started_at: utc_now() - timedelta(hours=10)})
+    db.commit()
+    assert await scheduler.run_scheduled() is True
+    assert runs == ["sync"]

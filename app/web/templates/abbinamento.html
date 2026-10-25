@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Abbinamento TMDB{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>Abbinamento TMDB</h1>
+    <p class="subtitle">
+        Titolo sul sito del cinema: <b>{{ film.raw_title }}</b>.
+        Se locandina o titolo non corrispondono, cerca il film giusto e premi <b>Scegli</b>.
+    </p>
+</header>
+
+<article class="review-card" id="review-{{ film.id }}">
+    <div class="review-source">
+        <p class="small">Abbinamento attuale</p>
+        {% if film.tmdb_id %}
+        <div class="suggestion">
+            {% if film.poster_url %}<img src="{{ film.poster_url }}" alt="" class="thumb" loading="lazy">{% endif %}
+            <div>
+                <p><b>{{ film.tmdb_title }}</b>{% if film.year %} ({{ film.year }}){% endif %}</p>
+                <p class="small">{{ {"abbinato": "Abbinato in automatico", "manuale": "Scelto da te", "da_verificare": "Da verificare", "non_trovato": "Non trovato"}.get(film.tmdb_match_status, "") }}</p>
+                <a href="https://www.themoviedb.org/movie/{{ film.tmdb_id }}" target="_blank" rel="noopener" class="ext-link">Apri su TMDB ↗</a>
+            </div>
+        </div>
+        {% else %}
+        <p><b>Nessuno</b></p>
+        {% endif %}
+    </div>
+
+    <p class="small">
+        Se scegli un film che CNV ha già con un altro titolo, i due vengono uniti
+        (orari, cinema e voto passano su uno solo): l'unione non si può annullare.
+    </p>
+
+    {% if tmdb_enabled %}
+    <form class="search-form"
+          hx-get="/film/{{ film.id }}/tmdb/cerca"
+          hx-target="#candidates-{{ film.id }}"
+          hx-indicator="#candidates-{{ film.id }}">
+        <input type="search" name="q" value="{{ film.tmdb_title or film.raw_title }}" aria-label="Cerca su TMDB" required>
+        <input type="hidden" name="dopo" value="{{ back }}">
+        <button type="submit" class="btn">Cerca su TMDB</button>
+    </form>
+    <div class="candidates" id="candidates-{{ film.id }}"></div>
+    {% else %}
+    <p class="small">Aggiungi <code>TMDB_API_KEY</code> al file <code>.env</code> per cercare su TMDB.</p>
+    {% endif %}
+</article>
+
+<p class="back-link"><a href="{{ back }}">← Torna indietro</a></p>
+{% endblock %}

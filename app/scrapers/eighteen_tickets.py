@@ -237,10 +237,16 @@ async def _run_cli_summary() -> None:
         print(f"\n[>] Connessione a {c.name} ({c.url})...")
         try:
             showtimes = await scraper.scrape()
-            coming_soon = await scraper.scrape_coming_soon()
         except Exception as err:
             print(f"[ERR] Errore scraping {c.name}: {err}")
             continue
+        # A failing "prossimamente" page does not invalidate the programme read above
+        coming_soon_failed = False
+        try:
+            coming_soon = await scraper.scrape_coming_soon()
+        except Exception as err:
+            coming_soon, coming_soon_failed = [], True
+            print(f"   [!] Prossimamente non disponibile: {err}")
 
         unique_films = {clean_title(s.raw_title) for s in showtimes}
         dates = [s.date for s in showtimes]
@@ -253,7 +259,7 @@ async def _run_cli_summary() -> None:
             "slug": c.slug,
             "films": len(unique_films),
             "showtimes": len(showtimes),
-            "coming_soon": len(coming_soon),
+            "coming_soon": "ERRORE" if coming_soon_failed else len(coming_soon),
             "date_range": date_range,
         })
 

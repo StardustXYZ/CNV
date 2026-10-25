@@ -5,7 +5,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
@@ -13,6 +14,7 @@ from app.db.engine import SessionLocal, init_db
 from app.logging_setup import configure_logging
 from app.services.scheduler import DailySyncScheduler
 from app.web.routes import router
+from app.web.security import is_same_origin
 
 
 @asynccontextmanager
@@ -36,6 +38,14 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     application = FastAPI(title="CNV – Chi Ni Vidimu", version="0.1.0", lifespan=lifespan)
     application.state.scheduler = None
+
+    @application.middleware("http")
+    async def block_other_websites(request: Request, call_next):
+        """Actions (votes, sync, export marks) only from CNV's own pages."""
+        headers = request.headers
+        if not is_same_origin(request.method, headers.get("host"), headers.get("origin"), headers.get("referer")):
+            return PlainTextResponse("Richiesta bloccata: arriva da un altro sito.", status_code=403)
+        return await call_next(request)
 
     # Static assets
     static_dir = Path(__file__).parent / "web" / "static"

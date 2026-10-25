@@ -387,3 +387,63 @@ def test_launcher_detects_a_running_server():
         port = server.getsockname()[1]
         assert is_running(port=port)
     assert not is_running(port=port)
+
+
+# ------------------------------------------------------------------
+# Change TMDB match, watchlist count, other websites
+# ------------------------------------------------------------------
+
+
+def test_change_match_page_and_redirect_back(client, session, cinema):
+    film = add_film(session, "MAMMINA", "in_uscita", [3], cinema,
+                    tmdb_id=15660, tmdb_title="Mammina cara", tmdb_match_status="abbinato", year=1981)
+
+    assert f'href="/film/{film.id}/abbinamento"' in client.get("/in-uscita").text
+
+    page = client.get(f"/film/{film.id}/abbinamento", headers={"referer": "http://testserver/in-uscita"}).text
+    assert "Mammina cara" in page and "Abbinato in automatico" in page
+    assert 'name="dopo" value="/in-uscita"' in page
+
+    partial = client.get(f"/film/{film.id}/tmdb/cerca", params={"q": "mammina", "dopo": "/in-uscita"}).text
+    assert "&#34;dopo&#34;: &#34;/in-uscita&#34;" in partial or '"dopo": "/in-uscita"' in partial
+
+    resp = client.post(
+        f"/film/{film.id}/tmdb/scegli",
+        data={"tmdb_id": MAMMINA.id, "dopo": "/in-uscita"},
+        headers={"HX-Request": "true"},
+    )
+    assert resp.headers["HX-Redirect"] == "/in-uscita"
+    session.expire_all()
+    film = session.get(Film, film.id)
+    assert (film.tmdb_id, film.tmdb_match_status, film.year) == (MAMMINA.id, "manuale", 2026)
+
+
+def test_change_match_never_redirects_to_another_site(client, session, cinema):
+    film = add_film(session, "MAMMINA", "in_uscita", [3], cinema)
+    resp = client.post(
+        f"/film/{film.id}/tmdb/scegli",
+        data={"tmdb_id": MAMMINA.id, "dopo": "https://evil.example/"},
+        follow_redirects=False,
+    )
+    assert resp.headers["location"] == "/da-verificare"
+    page = client.get(f"/film/{film.id}/abbinamento", headers={"referer": "https://evil.example/x"}).text
+    assert 'name="dopo" value="/"' in page
+
+
+def test_watchlist_count_ignores_films_already_exported(client, session, cinema):
+    add_film(session, "Da esportare", "uscito", [], cinema, vote="V")
+    add_film(session, "Esportato", "uscito", [], cinema, vote="V", letterboxd_exported=True)
+    html = client.get("/stato").text
+    assert 'href="/watchlist" class="">\n                Watchlist\n                <span class="count">1</span>' in html
+
+
+def test_actions_from_other_websites_are_blocked(client, session, cinema):
+    film = add_film(session, "Clayface", "in_sala", [0], cinema)
+    evil = client.post(f"/film/{film.id}/vote", data={"v": "V"}, headers={"origin": "https://evil.example"})
+    assert evil.status_code == 403
+    assert client.post("/sync", headers={"origin": "https://evil.example"}).status_code == 403
+    session.expire_all()
+    assert session.get(Film, film.id).vote is None
+
+    ok = client.post(f"/film/{film.id}/vote", data={"v": "V"}, headers={"origin": "http://testserver"})
+    assert ok.status_code == 200

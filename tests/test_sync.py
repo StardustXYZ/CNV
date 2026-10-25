@@ -201,7 +201,8 @@ async def test_scenario_sparizione_definitiva_7_giorni(db):
     db.refresh(film)
     assert film.status == "uscito"
     assert film.in_theaters is False
-    assert film.data_uscita_dalle_sale == day8
+    # Left on the day of its last screening (the later ones were removed from the site)
+    assert film.data_uscita_dalle_sale == date(2026, 10, 1)
 
     changes = [c for c in res.status_changes if c.film_id == film.id]
     assert any(c.new_status == "uscito" for c in changes)
@@ -253,7 +254,7 @@ async def test_scenario_evento_3_giorni(db):
     await run_sync(db, as_of_date=day4, cinemas=cinemas, scraper_results={"andromeda": other_day4})
     db.refresh(film)
     assert film.status == "uscito"
-    assert film.data_uscita_dalle_sale == day4
+    assert film.data_uscita_dalle_sale == date(2026, 10, 1)  # day of its last screening
 
 
 
@@ -559,7 +560,7 @@ async def test_scenario_sync_ogni_3_giorni_calcolo_corretto(db):
 
     # Film Event reached threshold 3 -> 'uscito'
     assert film_evt.status == "uscito"
-    assert film_evt.left_theaters_date == date(2026, 10, 4)
+    assert film_evt.left_theaters_date == date(2026, 10, 1)  # day of its last screening
 
     # Film Regular (threshold 7) -> still 'in_sala'
     assert film_reg.status == "in_sala"
@@ -643,7 +644,7 @@ async def test_scenario_scraper_rotto_non_resuscita_film_usciti(db):
     db.refresh(altro)
     # 'Vecchio Film' stays 'uscito' with its original exit date
     assert vecchio.status == "uscito"
-    assert vecchio.left_theaters_date == date(2026, 9, 21)
+    assert vecchio.left_theaters_date == date(2026, 9, 1)  # day of its last screening
     assert not any(c.change_type == "reappeared" for c in res.status_changes)
     # 'Altro Film' (latest programming of the failed cinema) is still protected
     assert altro.status == "in_sala"

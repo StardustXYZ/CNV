@@ -67,7 +67,7 @@ python -m app.launcher
 |---|---|
 | **In sala** | Film in programmazione con gli spettacoli rimasti oggi per cinema e sala. In fondo, a parte, i film spariti dai siti dei cinema con la data in cui verranno segnati come usciti |
 | **In uscita** | Film annunciati o in prevendita, ordinati per data, con i cinema che li avranno ("data da definire" se il cinema non la indica) |
-| **Da verificare** | Film che CNV non è riuscito ad abbinare con certezza a TMDB: si conferma il suggerimento o si cerca a mano |
+| **Da verificare** | Film che CNV non è riuscito ad abbinare con certezza a TMDB: si conferma il suggerimento o si cerca a mano. Se un film già abbinato ha locandina o titolo sbagliati, il link **cambia** sulla sua scheda apre la stessa ricerca |
 | **Watchlist** | Film usciti da tutte le sale segnati V o ?: si scarica il CSV per Letterboxd e si segnano come esportati |
 | **Stato** | Prossimo aggiornamento automatico, cronologia degli aggiornamenti, esito per ogni cinema e backup |
 
@@ -77,9 +77,13 @@ python -m app.launcher
 |---|---|
 | **In uscita** | Ha solo spettacoli futuri (prevendita) oppure è annunciato da un cinema |
 | **In sala** | Ha spettacoli oggi o nei giorni passati e compare ancora sui siti dei cinema |
-| **Uscito** | Non compare in nessun cinema da almeno 7 giorni (3 per gli eventi). Se un cinema lo annuncia di nuovo resta "In uscita"; se ricompare in programmazione torna "In sala" |
+| **Uscito** | Non compare in nessun cinema da almeno 7 giorni (3 per gli eventi). La data di uscita dalle sale è quella del suo ultimo spettacolo. Se un cinema lo annuncia di nuovo resta "In uscita"; se ricompare in programmazione torna "In sala" |
 
-Se il sito di un cinema non risponde, i suoi film non vengono considerati spariti.
+Un film è un "evento" solo se lo sono tutti i suoi spettacoli attuali: un'anteprima prima della programmazione normale non basta.
+
+Se il sito di un cinema non risponde, i suoi film non vengono considerati spariti, per al massimo 7 giorni. Gli spettacoli che un cinema toglie o sposta spariscono anche da CNV al sync successivo.
+
+Le azioni (voti, sync, export) vengono accettate solo dalle pagine di CNV: un altro sito aperto nel browser non può modificarle.
 
 ## Da dove arrivano i dati
 

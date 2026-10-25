@@ -51,3 +51,18 @@ async def test_scrape_all_handles_failure(monkeypatch: pytest.MonkeyPatch):
     assert results[0]["date_range"] == "ERRORE"
     assert results[0]["showtimes"] == 0
 
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_coming_soon_failure_keeps_the_programme(monkeypatch: pytest.MonkeyPatch):
+    from app.scrapers.stub import StubScraper
+
+    async def fail_coming_soon(self):
+        raise RuntimeError("prossimamente giù")
+
+    monkeypatch.setattr(StubScraper, "scrape_coming_soon", fail_coming_soon)
+    cfg = CinemaConfig(slug="c", name="Cinema", url="https://example.com", scraper="stub")
+    row = (await scrape_all(cinemas=[cfg], delay_between_cinemas=0.0))[0]
+    assert row["showtimes"] == 4
+    assert row["date_range"] != "ERRORE"
+    assert row["coming_soon"] == "ERRORE"

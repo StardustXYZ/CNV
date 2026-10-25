@@ -17,6 +17,7 @@
             {% if film.is_tmdb_confirmed %}
             <a href="https://www.themoviedb.org/movie/{{ film.tmdb_id }}" target="_blank" rel="noopener" class="ext-link">TMDB ↗</a>
             {% endif %}
+            <a href="/film/{{ film.id }}/abbinamento" class="ext-link change-match" title="Locandina o titolo sbagliati? Cambia l'abbinamento TMDB">{% if film.is_tmdb_confirmed %}cambia{% else %}abbina{% endif %}</a>
         </div>
 
         {% if mode == "oggi" %}
