@@ -192,7 +192,8 @@ def _exit_date(film: Film) -> date | None:
     """Day a film no longer programmed becomes "uscito" if it does not come back."""
     if film.last_seen_date is None:
         return None
-    threshold = settings.SYNC_DAYS_TO_USCITO_EVENTO if is_event_film(film) else settings.SYNC_DAYS_TO_USCITO
+    is_event = is_event_film(film, today=_now().date())
+    threshold = settings.SYNC_DAYS_TO_USCITO_EVENTO if is_event else settings.SYNC_DAYS_TO_USCITO
     return film.last_seen_date + timedelta(days=threshold)
 
 

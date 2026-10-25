@@ -260,3 +260,22 @@ async def test_merge_new_film_into_one_already_saved(db):
 
     assert db.query(Film).count() == 1
     assert res.matching.merged_titles == [("mammina (other mommy)", "MAMMINA")]
+
+
+@pytest.mark.asyncio
+async def test_unexpected_tmdb_error_skips_only_that_film(db):
+    class OddTmdb(FakeTmdb):
+        async def search_movies(self, query, year=None):
+            if query.lower() == "film rotto":
+                raise KeyError("id")  # e.g. a TMDB answer without the expected fields
+            return await super().search_movies(query, year)
+
+    tmdb = OddTmdb({"mammina": [MAMMINA]})
+    shows = {"andromeda": [show("andromeda", "FILM ROTTO", TODAY), show("andromeda", "MAMMINA", TODAY, 18)]}
+    res = await run_sync(db, as_of_date=TODAY, cinemas=CINEMAS, scraper_results=shows, matcher=tmdb)
+
+    assert res.showtimes == 2  # the sync itself completed and was saved
+    assert res.matching.errors == ["FILM ROTTO: KeyError"]
+    rotto = db.query(Film).filter_by(normalized_title="film rotto").one()
+    assert rotto.tmdb_match_status is None  # retried next time
+    assert db.query(Film).filter_by(normalized_title="mammina").one().tmdb_id == MAMMINA.id

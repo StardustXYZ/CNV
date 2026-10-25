@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import logging
 import re
 
@@ -75,30 +75,27 @@ def _resolve_cinema(name: str, configs: list[CinemaConfig], cinema_map: dict[str
 EVENT_KEYWORDS = ("evento", "film evento", "anteprima")
 
 
-def is_event_film(film: Film) -> bool:
+EVENT_WINDOW_DAYS = 14  # shows older than this do not decide whether a film is an event now
+
+
+def has_event_keyword(text: str | None) -> bool:
+    lowered = (text or "").lower()
+    return any(kw in lowered for kw in EVENT_KEYWORDS)
+
+
+def is_event_film(film: Film, today: date | None = None) -> bool:
     """Detect if a film is an event screening (threshold N=3 instead of 7).
 
-    A film is an event only if it has explicit tags or title indicators:
-    EVENTO, film evento, ANTEPRIMA.
+    A film is an event only if every one of its current shows is marked EVENTO,
+    film evento or ANTEPRIMA: a single preview before a regular run does not make
+    the whole film an event. With ``today`` only shows from the last 14 days and the
+    future count (falling back to all shows); without it, all shows count.
     """
-    if film.is_event:
-        return True
-
-    # Check title
-    raw_lower = (film.raw_title or "").lower()
-    for kw in EVENT_KEYWORDS:
-        if kw in raw_lower:
-            return True
-
-    # Check showtimes tags
-    for s in film.showtimes:
-        if s.tags:
-            tag_lower = s.tags.lower()
-            for kw in EVENT_KEYWORDS:
-                if kw in tag_lower:
-                    return True
-
-    return False
+    shows = list(film.showtimes)
+    if today is not None:
+        recent = [s for s in shows if s.date >= today - timedelta(days=EVENT_WINDOW_DAYS)]
+        shows = recent or shows
+    return bool(shows) and all(has_event_keyword(s.tags) for s in shows)
 
 
 @dataclass
@@ -400,10 +397,19 @@ async def run_sync(
             continue
 
         items = fetched[cfg.slug]
-        # Check for anomaly: 0 showtimes returned for a cinema that previously had programming
-        prev_shows_count = db.query(Showtime).filter_by(cinema_id=cinema.id).count()
-        if len(items) == 0 and prev_shows_count > 0:
-            err_msg = f"0 spettacoli restituiti in modo anomalo (precedentemente presenti {prev_shows_count} spettacoli)"
+        # Anomaly: 0 showtimes from a cinema that had shows still to come. A cinema with
+        # no upcoming shows that returns 0 is simply closed (e.g. summer), not broken.
+        upcoming_count = (
+            sum(
+                1
+                for show in db.query(Showtime).filter(Showtime.cinema_id == cinema.id, Showtime.date >= local_now.date())
+                if show_datetime(show.date, show.time) >= local_now
+            )
+            if not items
+            else 0
+        )
+        if upcoming_count:
+            err_msg = f"0 spettacoli restituiti in modo anomalo (ne erano in programma {upcoming_count})"
             logger.error("Cinema %s (%s): %s", cfg.name, cfg.slug, err_msg)
             failed_cinema_slugs.add(cfg.slug)
             sync_errors[cfg.slug] = err_msg
@@ -468,16 +474,11 @@ async def run_sync(
                     )
                 )
 
-            # Check if this screening tags the film as an EVENT (EVENTO, film evento, ANTEPRIMA)
-            raw_title_low = (item.raw_title or "").lower()
-            if any(kw in raw_title_low for kw in EVENT_KEYWORDS):
-                film.is_event = True
-            if item.tags:
-                for t in item.tags:
-                    t_low = (t or "").lower()
-                    if any(kw in t_low for kw in EVENT_KEYWORDS):
-                        film.is_event = True
-                        break
+            # Tags of this screening. An event written only in the title ("EVENTO 8 ...")
+            # becomes a tag too: whether the film is an event is decided from its shows.
+            show_tags = [t for t in item.tags if t]
+            if has_event_keyword(item.raw_title) and not any(has_event_keyword(t) for t in show_tags):
+                show_tags.append("EVENTO")
 
             # Upsert showtime
             existing_show = (
@@ -493,8 +494,7 @@ async def run_sync(
             )
             if existing_show:
                 existing_show.last_seen = now
-                if item.tags:
-                    existing_show.tags = ",".join(item.tags)
+                existing_show.tags = ",".join(show_tags) or None
                 if item.source_url:
                     existing_show.source_url = item.source_url
                 listed_shows.append(existing_show)
@@ -505,7 +505,7 @@ async def run_sync(
                     date=item.date,
                     time=item.time,
                     sala=item.sala,
-                    tags=",".join(item.tags) if item.tags else None,
+                    tags=",".join(show_tags) or None,
                     source_url=item.source_url,
                     last_seen=now,
                     scraped_at=now,
@@ -593,7 +593,9 @@ async def run_sync(
 
     # Films protected by a cinema that failed today: those present in that cinema's
     # latest recorded snapshot, i.e. its programming as last seen before the failure.
-    # Films that had already left that cinema earlier are not protected.
+    # Films that had already left that cinema earlier are not protected, and the
+    # protection ends when the cinema has been failing for longer than the "uscito"
+    # threshold: a site broken for good must not keep its films in theaters forever.
     protected_film_ids: set[int] = set()
     for slug in failed_cinema_slugs:
         cinema_id = cinema_map[slug].id
@@ -602,7 +604,7 @@ async def run_sync(
             .filter(DailySnapshot.cinema_id == cinema_id, DailySnapshot.sync_date <= today)
             .scalar()
         )
-        if last_snap_date is None:
+        if last_snap_date is None or (today - last_snap_date).days > settings.SYNC_DAYS_TO_USCITO:
             continue
         protected_film_ids.update(
             film_id
@@ -618,8 +620,9 @@ async def run_sync(
         seen_today = film.id in seen_film_ids_today
         is_protected_by_failed_cinema = not seen_today and film.id in protected_film_ids
 
-        # Event threshold
-        film_is_event = is_event_film(film)
+        # Event threshold, recomputed every sync from the current shows
+        film_is_event = is_event_film(film, today=today)
+        film.is_event = film_is_event
         threshold = settings.SYNC_DAYS_TO_USCITO_EVENTO if film_is_event else settings.SYNC_DAYS_TO_USCITO
 
         # Update missing days based on calendar dates (difference between today and last seen date)
@@ -627,7 +630,7 @@ async def run_sync(
             film.last_seen_date = today
             film.consecutive_missing_days = 0
         elif is_protected_by_failed_cinema:
-            film.last_seen_date = today
+            # Not counted as missing, but not seen either: last_seen_date stays the real one
             film.consecutive_missing_days = 0
         else:
             last_d = film.last_seen_date
@@ -643,22 +646,20 @@ async def run_sync(
             days_diff = max(0, (today - last_d).days)
             film.consecutive_missing_days = days_diff
 
-        # Dates analysis
+        # Dates analysis: only recent and upcoming shows decide, not those of months ago
         all_dates = [s.date for s in film.showtimes]
+        future_dates = [d for d in all_dates if d > today]
+        shown_recently = any(today - timedelta(days=threshold) <= d <= today for d in all_dates)
 
-        if not all_dates:
+        if not all_dates or (future_dates and not shown_recently):
+            # Only future shows: presale, or back in programme after a while
             target_status = "in_uscita"
-        elif min(all_dates) > today:
-            # First showtime is in the future
-            target_status = "in_uscita"
+        elif film.consecutive_missing_days >= threshold:
+            # Gone from the programmes, but if a cinema announces it again it is coming back
+            target_status = "in_uscita" if film.id in announced_film_ids else "uscito"
         else:
-            # Has showtimes today or past
-            if film.consecutive_missing_days >= threshold:
-                # Gone from the programmes, but if a cinema announces it again it is coming back
-                target_status = "in_uscita" if film.id in announced_film_ids else "uscito"
-            else:
-                # Tolerates gaps: remains in_sala as long as missing < threshold
-                target_status = "in_sala"
+            # Tolerates gaps: remains in_sala as long as missing < threshold
+            target_status = "in_sala"
 
         # Apply state transitions
         if old_status == "uscito" and target_status == "in_sala":
@@ -721,6 +722,8 @@ async def run_sync(
                         details=(
                             "Spettacoli solo futuri (prevendita o correzione data)"
                             if all_dates and min(all_dates) > today
+                            else f"Torna in programmazione dal {min(future_dates):%d/%m}"
+                            if future_dates
                             else "Non più in programmazione ma annunciato di nuovo (prossimamente)"
                         ),
                     )

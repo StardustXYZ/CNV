@@ -211,3 +211,8 @@ async def test_merge_moves_announcements(db):
 
     film = db.query(Film).one()
     assert {e.cinema.slug for e in db.query(ComingSoon).filter_by(film_id=film.id)} == {"andromeda-river", "citrigno"}
+
+
+def test_label_date_around_new_year():
+    assert parse_label_date("film evento dal 30 dicembre", date(2027, 1, 2)) == date(2026, 12, 30)
+    assert parse_label_date("solo il 5 gennaio", date(2026, 12, 28)) == date(2027, 1, 5)

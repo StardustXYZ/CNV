@@ -689,10 +689,11 @@ async def test_run_sync_scraper_sconosciuto_registrato_come_errore(db):
     await run_sync(db, as_of_date=date(2026, 10, 1), cinemas=good, scraper_results={"andromeda": day1})
 
     broken = [CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="inesistente")]
-    res = await run_sync(db, as_of_date=date(2026, 10, 10), cinemas=broken, delay_between_cinemas=0, coming_soon=[])
+    # 4 days later: within the 7-day protection of a failing cinema
+    res = await run_sync(db, as_of_date=date(2026, 10, 5), cinemas=broken, delay_between_cinemas=0, coming_soon=[])
 
     assert "inesistente" in res.errors["andromeda"]
-    sync_run = db.query(SyncRun).filter_by(sync_date=date(2026, 10, 10)).one()
+    sync_run = db.query(SyncRun).filter_by(sync_date=date(2026, 10, 5)).one()
     assert sync_run.status == "error"
     film = db.query(Film).one()
     assert film.status == "in_sala"
@@ -812,3 +813,118 @@ async def test_release_date_in_title_only_applies_to_its_cinema(db):
     assert _shows(db, "andromeda") == [("2026-12-15", "20:00", None)]
     assert _shows(db, "garden") == [("2026-12-17", "21:00", None)]
     assert db.query(Film).count() == 1
+
+
+# ------------------------------------------------------------------
+# Status from recent shows, events, closed or broken cinemas
+# ------------------------------------------------------------------
+
+ONE_CINEMA = TWO_CINEMAS[:1]
+
+
+async def _sync_day(db, day, shows, **kwargs):
+    return await run_sync(
+        db, as_of_date=day, cinemas=ONE_CINEMA, scraper_results={"andromeda": shows}, coming_soon=[], **kwargs
+    )
+
+
+@pytest.mark.asyncio
+async def test_film_back_in_presale_is_coming_soon_not_in_theaters(db):
+    await _sync_day(db, date(2026, 10, 1), [ShowtimeData("andromeda", "DUNE", date(2026, 10, 1), time(21, 0))])
+    await _sync_day(db, date(2026, 10, 20), [ShowtimeData("andromeda", "ALTRO", date(2026, 10, 20), time(21, 0))])
+    dune = db.query(Film).filter_by(normalized_title="dune").one()
+    assert dune.status == "uscito"
+
+    res = await _sync_day(db, date(2026, 11, 1), [
+        ShowtimeData("andromeda", "DUNE", date(2026, 12, 10), time(21, 0)),
+        ShowtimeData("andromeda", "ALTRO", date(2026, 11, 1), time(21, 0)),
+    ])
+    db.refresh(dune)
+    assert dune.status == "in_uscita"
+    assert dune.left_theaters_date is None
+    change = next(c for c in res.status_changes if c.film_id == dune.id)
+    assert change.details == "Torna in programmazione dal 10/12"
+
+    # On 10/12 it is in theaters again
+    await _sync_day(db, date(2026, 12, 10), [ShowtimeData("andromeda", "DUNE", date(2026, 12, 10), time(21, 0))])
+    db.refresh(dune)
+    assert dune.status == "in_sala"
+
+
+@pytest.mark.asyncio
+async def test_a_preview_does_not_make_the_whole_film_an_event(db):
+    await _sync_day(db, date(2026, 12, 15), [
+        ShowtimeData("andromeda", "DUNE", date(2026, 12, 15), time(20, 0), tags=["#ANTEPRIMA"]),
+        ShowtimeData("andromeda", "DUNE", date(2026, 12, 16), time(21, 0)),
+    ])
+    dune = db.query(Film).one()
+    assert dune.is_event is False
+
+    # A 4-day gap: with the 7-day threshold of a regular film it is still in theaters
+    await _sync_day(db, date(2026, 12, 20), [ShowtimeData("andromeda", "ALTRO", date(2026, 12, 20), time(21, 0))])
+    db.refresh(dune)
+    assert dune.status == "in_sala"
+
+
+@pytest.mark.asyncio
+async def test_event_only_in_the_title_is_still_an_event(db):
+    await _sync_day(db, date(2026, 10, 19), [
+        ShowtimeData("andromeda", "EVENTO 8 TRAINSPOTTING", date(2026, 10, 19), time(21, 45)),
+    ])
+    film = db.query(Film).one()
+    assert film.is_event is True
+    assert "EVENTO" in db.query(Showtime).one().tags
+
+
+@pytest.mark.asyncio
+async def test_event_flag_follows_the_current_programme(db):
+    # Event screenings in October, then a regular run in November
+    await _sync_day(db, date(2026, 10, 19), [
+        ShowtimeData("andromeda", "TRAINSPOTTING", date(2026, 10, 19), time(21, 45), tags=["EVENTO 8"]),
+    ])
+    film = db.query(Film).one()
+    assert film.is_event is True
+
+    await _sync_day(db, date(2026, 11, 10), [
+        ShowtimeData("andromeda", "TRAINSPOTTING", date(2026, 11, 10), time(21, 30)),
+        ShowtimeData("andromeda", "TRAINSPOTTING", date(2026, 11, 11), time(21, 30)),
+    ])
+    db.refresh(film)
+    assert film.is_event is False
+
+
+@pytest.mark.asyncio
+async def test_closed_cinema_is_not_an_error_and_its_films_leave(db):
+    await _sync_day(db, date(2026, 6, 1), [ShowtimeData("andromeda", "FILM ESTIVO", date(2026, 6, 1), time(21, 0))])
+
+    # Summer closure: no shows, and none were scheduled
+    res = await _sync_day(db, date(2026, 6, 10), [])
+    assert res.errors == {}
+    assert db.query(SyncRun).filter_by(sync_date=date(2026, 6, 10)).one().status == "ok"
+    assert db.query(Film).one().status == "uscito"
+
+
+@pytest.mark.asyncio
+async def test_zero_shows_with_shows_still_scheduled_is_an_anomaly(db):
+    await _sync_day(db, date(2026, 10, 20), [ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 25), time(21, 0))])
+
+    res = await _sync_day(db, date(2026, 10, 21), [])
+    assert "ne erano in programma 1" in res.errors["andromeda"]
+    assert db.query(Showtime).count() == 1  # nothing removed from a page that looks broken
+    assert db.query(Film).one().status == "in_uscita"
+
+
+@pytest.mark.asyncio
+async def test_protection_of_a_broken_cinema_ends_after_the_threshold(db):
+    await _sync_day(db, date(2026, 10, 1), [ShowtimeData("andromeda", "FILM A", date(2026, 10, 1), time(18, 0))])
+    film = db.query(Film).one()
+
+    broken = {"andromeda": RuntimeError("sito cambiato")}
+    await _sync_day(db, date(2026, 10, 6), [], scraper_errors=broken)
+    db.refresh(film)
+    assert film.status == "in_sala"  # 5 days of failures: still protected
+    assert film.last_seen_date == date(2026, 10, 1)  # but not "seen" while the site is down
+
+    await _sync_day(db, date(2026, 10, 9), [], scraper_errors=broken)
+    db.refresh(film)
+    assert film.status == "uscito"  # 8 days: protection over, not seen since 1/10

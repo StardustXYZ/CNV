@@ -19,7 +19,7 @@ import re
 from bs4 import BeautifulSoup
 import httpx
 
-from app.scrapers.base import ITALIAN_MONTHS, BaseScraper, ComingSoonData, ShowtimeData
+from app.scrapers.base import ITALIAN_MONTHS, BaseScraper, ComingSoonData, ShowtimeData, nearest_date
 
 DEFAULT_USER_AGENT = "CNV/0.1.0 (+https://github.com/StardustXYZ/CNVTrue; personal cinema tracker)"
 DEFAULT_TIMEOUT = 15.0
@@ -35,20 +35,15 @@ def parse_label_date(label: str, reference_date: date) -> date | None:
     """First 'D month' in a card label, e.g. 'rassegna altri sguardi - martedi 27 ottobre'.
 
     Presale labels ("prevendite aperte dal 5 ottobre") give the start of ticket sales,
-    not of the screenings, so they return None. Months before the reference month
-    belong to next year.
+    not of the screenings, so they return None. The year is the one that puts the date
+    closest to the reference date (in early January "30 dicembre" is last year's).
     """
     if not label or "prevendit" in label.lower():
         return None
     m = _LABEL_DATE.search(label)
     if not m:
         return None
-    month = ITALIAN_MONTHS[m.group("month").lower()]
-    year = reference_date.year + 1 if month < reference_date.month else reference_date.year
-    try:
-        return date(year, month, int(m.group("day")))
-    except ValueError:
-        return None
+    return nearest_date(int(m.group("day")), ITALIAN_MONTHS[m.group("month").lower()], reference_date)
 
 
 def _section_of(item) -> str:

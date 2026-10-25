@@ -50,9 +50,21 @@ class Settings:
     LOGS_DIR: Path = ROOT_DIR / "logs"
 
 
-def _parse_time(value: str) -> time:
-    hours, minutes = str(value).strip().split(":")
-    return time(int(hours), int(minutes))
+def _parse_time(value: str | int) -> time:
+    """"HH:MM" from cinemas.yaml or the environment.
+
+    Without quotes YAML reads 20:30 as the number 1230 (minutes in base 60), so
+    numbers are converted back. Anything else gives a clear error at startup.
+    """
+    try:
+        if isinstance(value, int) and not isinstance(value, bool):
+            return time(value // 60, value % 60)
+        hours, minutes = str(value).strip().split(":")
+        return time(int(hours), int(minutes))
+    except (ValueError, TypeError):
+        raise ValueError(
+            f'auto_sync_time non valido: {value!r}. Usa il formato "HH:MM", ad esempio "08:00"'
+        ) from None
 
 
 def _load_settings() -> Settings:

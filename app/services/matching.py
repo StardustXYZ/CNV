@@ -467,20 +467,25 @@ async def match_pending_films(db: Session, searcher: MovieSearcher, today: date 
     for film in _pending_films(db, now):
         if film.id in report.merges:
             continue
+        title = film.raw_title
         try:
             decision = await match_film(db, film, searcher, today)
-        except httpx.HTTPError as err:
-            msg = f"{film.raw_title}: {err.__class__.__name__}"
-            logger.warning("Ricerca TMDB fallita per %s", msg)
-            report.errors.append(msg)
+            _record_decision(db, film, decision, report, now)
+            db.commit()
+        except Exception as err:
+            # Network errors and anything unexpected (e.g. an odd TMDB answer) skip only this
+            # film: it stays pending and is retried at the next sync.
+            db.rollback()
+            if isinstance(err, httpx.HTTPError):
+                logger.warning("Ricerca TMDB fallita per %s: %s", title, err.__class__.__name__)
+            else:
+                logger.exception("Errore imprevisto nel matching TMDB di %s", title)
+            report.errors.append(f"{title}: {err.__class__.__name__}")
             consecutive_errors += 1
             if consecutive_errors >= MAX_CONSECUTIVE_API_ERRORS:
                 report.errors.append("Troppi errori consecutivi da TMDB: matching interrotto")
                 break
             continue
         consecutive_errors = 0
-
-        _record_decision(db, film, decision, report, now)
-        db.commit()
 
     return report

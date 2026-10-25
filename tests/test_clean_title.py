@@ -136,3 +136,23 @@ def test_clean_title_release_from_two_digit_year():
     res = clean_title("AVENGERS: DOOMSDAY - DAL 16 DICEMBRE 27", reference_date=date(2026, 10, 18))
     assert res == "AVENGERS: DOOMSDAY"
     assert res.release_from == date(2027, 12, 16)
+
+
+@pytest.mark.parametrize(
+    ("raw", "today", "expected"),
+    [
+        # Early January: "30 dicembre" is a few days ago, not next December
+        ("FILM X - DAL 30 DICEMBRE", (2027, 1, 2), (2026, 12, 30)),
+        ("FILM X - DAL 30/12", (2027, 1, 2), (2026, 12, 30)),
+        # Late December: "5 gennaio" is next month
+        ("FILM X - DAL 5 GENNAIO", (2026, 12, 28), (2027, 1, 5)),
+        # October: "16 dicembre" is this December
+        ("FILM X - DAL 16 DICEMBRE", (2026, 10, 23), (2026, 12, 16)),
+        # An explicit year always wins
+        ("FILM X - DAL 30 DICEMBRE 2027", (2027, 1, 2), (2027, 12, 30)),
+    ],
+)
+def test_release_from_year_closest_to_today(raw, today, expected):
+    from datetime import date
+
+    assert clean_title(raw, reference_date=date(*today)).release_from == date(*expected)

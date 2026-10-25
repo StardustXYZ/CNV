@@ -104,40 +104,47 @@ def extract_release_from(text: str, reference_date: date | None = None) -> date 
     d = m.groupdict()
     day = 1
     month = reference_date.month
-    year = reference_date.year
+    year: int | None = None  # None: not written, pick the closest one
 
     if d.get("day_num"):
         day = int(d["day_num"])
         month = int(d["month_num"])
         if d.get("year_num"):
             year = _parse_year(d["year_num"])
-        else:
-            if month < reference_date.month:
-                year = reference_date.year + 1
     elif d.get("day_word"):
         day = int(d["day_word"])
         if d.get("month_name"):
             month = ITALIAN_MONTHS.get(d["month_name"].lower(), reference_date.month)
-            if d.get("year_word"):
-                year = _parse_year(d["year_word"])
-            else:
-                if month < reference_date.month:
-                    year = reference_date.year + 1
-        elif d.get("year_word"):
+        if d.get("year_word"):
             year = _parse_year(d["year_word"])
+        elif not d.get("month_name"):
+            year = reference_date.year  # "DAL 16": this month
     elif d.get("month_only"):
         month = ITALIAN_MONTHS.get(d["month_only"].lower(), reference_date.month)
-        day = 1
         if d.get("year_only"):
             year = _parse_year(d["year_only"])
-        else:
-            if month < reference_date.month:
-                year = reference_date.year + 1
 
+    if year is None:
+        return nearest_date(day, month, reference_date)
     try:
         return date(year, month, day)
     except ValueError:
         return None
+
+
+def nearest_date(day: int, month: int, reference_date: date) -> date | None:
+    """Day and month without a year: the occurrence closest to ``reference_date``.
+
+    On 2 January "30 dicembre" is three days ago, not next December; in October
+    "16 dicembre" is this December.
+    """
+    candidates = []
+    for year in (reference_date.year - 1, reference_date.year, reference_date.year + 1):
+        try:
+            candidates.append(date(year, month, day))
+        except ValueError:
+            continue
+    return min(candidates, key=lambda c: abs((c - reference_date).days), default=None)
 
 
 def clean_title(title: str, reference_date: date | None = None) -> CleanedTitle:
