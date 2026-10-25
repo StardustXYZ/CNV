@@ -171,3 +171,45 @@ async def test_garden_scraper_offline_multi_day(monkeypatch: pytest.MonkeyPatch,
     assert any(s.date == date(2026, 10, 16) for s in showtimes)
     assert any(s.date == date(2026, 10, 29) for s in showtimes)
 
+
+
+def _patch_client(monkeypatch, handler):
+    transport = httpx.MockTransport(handler)
+    orig_async_client = httpx.AsyncClient
+
+    def patched_async_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return orig_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", patched_async_client)
+
+
+@pytest.mark.asyncio
+async def test_garden_day_page_failing_fails_the_whole_scrape(monkeypatch, garden_html: str):
+    """A day that cannot be read must not look like a day without shows."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "data=29-10-2026" in str(request.url):
+            return httpx.Response(500, request=request)
+        return httpx.Response(200, text=garden_html, request=request)
+
+    _patch_client(monkeypatch, handler)
+    with pytest.raises(httpx.HTTPStatusError):
+        await CinemaGardenScraper(request_delay=0.0).scrape()
+
+
+@pytest.mark.asyncio
+async def test_garden_day_page_is_retried_once(monkeypatch, garden_html: str, garden_29_10_html: str):
+    calls = {"29-10": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "data=29-10-2026" in str(request.url):
+            calls["29-10"] += 1
+            if calls["29-10"] == 1:
+                return httpx.Response(503, request=request)
+            return httpx.Response(200, text=garden_29_10_html, request=request)
+        return httpx.Response(200, text=garden_html, request=request)
+
+    _patch_client(monkeypatch, handler)
+    showtimes = await CinemaGardenScraper(request_delay=0.0).scrape()
+    assert calls["29-10"] == 2
+    assert any(s.date == date(2026, 10, 29) for s in showtimes)

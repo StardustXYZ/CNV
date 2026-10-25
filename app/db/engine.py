@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 
-engine = create_engine(settings.DATABASE_URL, echo=False)
+# SQLite: wait up to 15 s (default 5 s) when another write is in progress, e.g. a vote
+# saved while the sync is writing, instead of failing with "database is locked".
+_connect_args = {"timeout": 15} if settings.DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(settings.DATABASE_URL, echo=False, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine)
 
 

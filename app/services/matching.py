@@ -419,8 +419,46 @@ async def match_film(db: Session, film: Film, searcher: MovieSearcher, today: da
     return decide(score_candidates(movies, sq, _reference_date(db, film, today)))
 
 
+def _record_decision(db: Session, film: Film, decision: MatchDecision, report: MatchReport, now: datetime) -> None:
+    """Save one film's TMDB decision, merging it with a confirmed twin if there is one."""
+    if decision.status == STATUS_NOT_FOUND:
+        film.tmdb_match_status = STATUS_NOT_FOUND
+        film.tmdb_checked_at = now
+        report.not_found.append(film)
+        return
+
+    best = decision.best
+    _apply_movie(film, best.movie, decision.status, best.score, now)
+    if decision.status == STATUS_REVIEW:
+        report.to_review.append(film)
+        return
+
+    twin = _find_confirmed_twin(db, film, best.movie.id)
+    if twin is None:
+        report.matched.append(film)
+        return
+
+    older, newer = (twin, film) if twin.id < film.id else (film, twin)
+    report.merged_titles.append((newer.raw_title, older.raw_title))
+    other_id = newer.id
+    if newer in report.matched:
+        report.matched.remove(newer)
+    survivor, _ = _merge_into_older(db, film, twin)
+    report.merges[other_id] = survivor.id
+    # Older merges into the deleted film now point at the survivor
+    for merged_id, target in report.merges.items():
+        if target == other_id:
+            report.merges[merged_id] = survivor.id
+    if survivor not in report.matched:
+        report.matched.append(survivor)
+
+
 async def match_pending_films(db: Session, searcher: MovieSearcher, today: date | None = None) -> MatchReport:
-    """Match every film not yet checked (and retry old "non_trovato"), merging duplicates."""
+    """Match every film not yet checked (and retry old "non_trovato"), merging duplicates.
+
+    Each film is saved right after its decision, so the database is never locked while
+    waiting for TMDB and the app can save votes during a sync.
+    """
     today = today or date.today()
     now = datetime.now(timezone.utc)
     report = MatchReport()
@@ -442,36 +480,7 @@ async def match_pending_films(db: Session, searcher: MovieSearcher, today: date 
             continue
         consecutive_errors = 0
 
-        if decision.status == STATUS_NOT_FOUND:
-            film.tmdb_match_status = STATUS_NOT_FOUND
-            film.tmdb_checked_at = now
-            report.not_found.append(film)
-            continue
+        _record_decision(db, film, decision, report, now)
+        db.commit()
 
-        best = decision.best
-        _apply_movie(film, best.movie, decision.status, best.score, now)
-        if decision.status == STATUS_REVIEW:
-            report.to_review.append(film)
-            continue
-
-        twin = _find_confirmed_twin(db, film, best.movie.id)
-        if twin is None:
-            report.matched.append(film)
-            continue
-
-        older, newer = (twin, film) if twin.id < film.id else (film, twin)
-        report.merged_titles.append((newer.raw_title, older.raw_title))
-        other_id = newer.id
-        if newer in report.matched:
-            report.matched.remove(newer)
-        survivor, _ = _merge_into_older(db, film, twin)
-        report.merges[other_id] = survivor.id
-        # Older merges into the deleted film now point at the survivor
-        for merged_id, target in report.merges.items():
-            if target == other_id:
-                report.merges[merged_id] = survivor.id
-        if survivor not in report.matched:
-            report.matched.append(survivor)
-
-    db.flush()
     return report

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time, timedelta
 import pytest
 
 from app.config import CinemaConfig
@@ -716,3 +716,99 @@ async def test_run_sync_non_inizializza_il_db_globale(db, monkeypatch):
 
     res = await run_sync(db, as_of_date=date(2026, 10, 1), cinemas=cinemas, scraper_results={"andromeda": shows})
     assert res.showtimes == 1
+
+
+# ------------------------------------------------------------------
+# Cancelled or moved shows, and "DAL <data>" limited to its cinema
+# ------------------------------------------------------------------
+
+TWO_CINEMAS = [
+    CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="stub"),
+    CinemaConfig(slug="garden", name="Garden", url="https://example.com", scraper="stub"),
+]
+
+
+def _shows(db, slug):
+    return sorted(
+        (str(s.date), s.time.strftime("%H:%M"), s.sala)
+        for s in db.query(Showtime).join(Cinema).filter(Cinema.slug == slug)
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancelled_and_moved_shows_are_removed(db):
+    day1 = {
+        "andromeda": [
+            ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 22), time(21, 0), sala="Sala 1"),
+            ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 23), time(21, 0), sala="Sala 1"),
+            ShowtimeData("andromeda", "MAMMINA", date(2026, 10, 24), time(18, 0), sala="Sala 2"),
+        ],
+        "garden": [ShowtimeData("garden", "ZUSTISSIA", date(2026, 10, 22), time(18, 30), sala="Sala B")],
+    }
+    await run_sync(db, as_of_date=date(2026, 10, 20), cinemas=TWO_CINEMAS, scraper_results=day1, coming_soon=[])
+
+    # Next day Andromeda moved the 22/10 show to Sala 2 and cancelled Mammina; Garden is unchanged
+    day2 = {
+        "andromeda": [
+            ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 22), time(21, 0), sala="Sala 2"),
+            ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 23), time(21, 0), sala="Sala 1"),
+        ],
+        "garden": day1["garden"],
+    }
+    res = await run_sync(db, as_of_date=date(2026, 10, 21), cinemas=TWO_CINEMAS, scraper_results=day2, coming_soon=[])
+
+    assert _shows(db, "andromeda") == [("2026-10-22", "21:00", "Sala 2"), ("2026-10-23", "21:00", "Sala 1")]
+    assert _shows(db, "garden") == [("2026-10-22", "18:30", "Sala B")]
+    assert res.showtimes_removed == 2
+
+
+@pytest.mark.asyncio
+async def test_started_shows_stay_and_late_shows_count_as_upcoming(db):
+    cinemas = TWO_CINEMAS[:1]
+    day = date(2026, 10, 21)
+    listed = [
+        ShowtimeData("andromeda", "CLAYFACE", day, time(18, 0)),
+        ShowtimeData("andromeda", "CLAYFACE", day, time(22, 0)),
+        ShowtimeData("andromeda", "CLAYFACE", day, time(0, 30)),  # tonight after midnight
+        ShowtimeData("andromeda", "ALTRO", day + timedelta(days=1), time(21, 0)),
+    ]
+    await run_sync(db, as_of_date=day, cinemas=cinemas, scraper_results={"andromeda": listed}, coming_soon=[])
+
+    # At 20:00 the page no longer lists any Clayface show of today
+    res = await run_sync(
+        db, as_of_date=day, cinemas=cinemas, scraper_results={"andromeda": listed[3:]}, coming_soon=[],
+        local_now=datetime(2026, 10, 21, 20, 0),
+    )
+    # 18:00 already took place and stays as history; 22:00 and 00:30 were cancelled
+    assert _shows(db, "andromeda") == [("2026-10-21", "18:00", None), ("2026-10-22", "21:00", None)]
+    assert res.showtimes_removed == 2
+
+
+@pytest.mark.asyncio
+async def test_failed_cinema_keeps_its_shows(db):
+    shows = {"andromeda": [ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 25), time(21, 0))]}
+    await run_sync(db, as_of_date=date(2026, 10, 20), cinemas=TWO_CINEMAS[:1], scraper_results=shows, coming_soon=[])
+
+    await run_sync(
+        db, as_of_date=date(2026, 10, 21), cinemas=TWO_CINEMAS[:1], scraper_results={}, coming_soon=[],
+        scraper_errors={"andromeda": RuntimeError("timeout")},
+    )
+    assert _shows(db, "andromeda") == [("2026-10-25", "21:00", None)]
+
+
+@pytest.mark.asyncio
+async def test_release_date_in_title_only_applies_to_its_cinema(db):
+    shows = {
+        # Andromeda has an early screening on 15/12
+        "andromeda": [ShowtimeData("andromeda", "AVENGERS: DOOMSDAY", date(2026, 12, 15), time(20, 0))],
+        # Garden writes "DAL 16 DICEMBRE" and also lists a show before that date
+        "garden": [
+            ShowtimeData("garden", "AVENGERS: DOOMSDAY - DAL 16 DICEMBRE", date(2026, 12, 10), time(21, 0)),
+            ShowtimeData("garden", "AVENGERS: DOOMSDAY - DAL 16 DICEMBRE", date(2026, 12, 17), time(21, 0)),
+        ],
+    }
+    await run_sync(db, as_of_date=date(2026, 12, 1), cinemas=TWO_CINEMAS, scraper_results=shows, coming_soon=[])
+
+    assert _shows(db, "andromeda") == [("2026-12-15", "20:00", None)]
+    assert _shows(db, "garden") == [("2026-12-17", "21:00", None)]
+    assert db.query(Film).count() == 1

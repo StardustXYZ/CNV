@@ -267,8 +267,9 @@ def parse_coming_soon_html(html: str, cinema_slug: str = DEFAULT_CINEMA_NAME) ->
 class CinemaGardenScraper(BaseScraper):
     """Scraper implementation for Cinema Garden (Rende).
 
-    Walks through all available day links (~14 days), parses movie cards,
-    handles midnight screenings, and ignores the Prossimamente banner.
+    Walks through all available day links (~14 days), parses movie cards and
+    handles midnight screenings. If a day page cannot be read the whole scrape fails,
+    so a partial programme is never mistaken for cancelled shows.
     """
 
     def __init__(
@@ -315,21 +316,32 @@ class CinemaGardenScraper(BaseScraper):
                     continue  # Already parsed above from home page
 
                 await asyncio.sleep(self.request_delay)
-                try:
-                    day_resp = await client.get(day_url)
-                    if day_resp.status_code == 200:
-                        day_shows = parse_day_showtimes_html(
-                            html=day_resp.text,
-                            cinema_slug=self.cinema_slug,
-                            base_url=str(day_resp.url),
-                            current_date=d,
-                        )
-                        all_showtimes.extend(day_shows)
-                except Exception:
-                    # Continue gracefully if a single day request fails
-                    continue
+                day_resp = await self._get_day(client, day_url)
+                day_shows = parse_day_showtimes_html(
+                    html=day_resp.text,
+                    cinema_slug=self.cinema_slug,
+                    base_url=str(day_resp.url),
+                    current_date=d,
+                )
+                all_showtimes.extend(day_shows)
 
         return all_showtimes
+
+    async def _get_day(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+        """Fetch one day page, retrying once.
+
+        If it keeps failing the error is raised: the sync then treats the whole Garden as
+        failed for today, instead of thinking that day's shows were cancelled.
+        """
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp
+        except httpx.HTTPError:
+            await asyncio.sleep(self.request_delay)
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp
 
     async def scrape_coming_soon(self) -> list[ComingSoonData]:
         """Return the films of the 'Prossimamente' banner (titles from poster file names, no dates)."""

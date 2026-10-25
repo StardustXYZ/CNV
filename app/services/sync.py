@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 import logging
 import re
 
@@ -19,6 +19,7 @@ from app.scrapers.eighteen_tickets import EighteenTicketsScraper
 from app.scrapers.garden import CinemaGardenScraper
 from app.scrapers.stub import StubScraper
 from app.services.matching import MatchReport, match_pending_films
+from app.services.schedule import show_datetime
 from app.services.tmdb import MovieSearcher
 from app.services.titles import normalize_title
 
@@ -123,6 +124,7 @@ class SyncResult:
     errors: dict[str, str] = field(default_factory=dict)
     snapshots_created: int = 0
     snapshots_updated: int = 0
+    showtimes_removed: int = 0  # cancelled or moved by the cinemas
     matching: MatchReport | None = None  # None when TMDB matching was not run
     coming_soon: dict[str, int] = field(default_factory=dict)  # source -> announced films kept
 
@@ -180,6 +182,21 @@ def _get_or_create_film(db: Session, raw_title: str, today: date | None = None) 
         if today and (film.last_seen_date is None or today > film.last_seen_date):
             film.last_seen_date = today
         return film, False
+
+
+def _remove_cancelled_showtimes(db: Session, cinema_id: int, listed_ids: set[int], local_now: datetime) -> int:
+    """Delete this cinema's shows that have not started yet and are no longer on its site.
+
+    Called only after a successful scrape of the cinema: a show missing from the page was
+    cancelled or moved (another time or sala). Shows already started stay as history.
+    """
+    removed = 0
+    candidates = db.query(Showtime).filter(Showtime.cinema_id == cinema_id, Showtime.date >= local_now.date())
+    for show in candidates.all():
+        if show.id not in listed_ids and show_datetime(show.date, show.time) >= local_now:
+            db.delete(show)
+            removed += 1
+    return removed
 
 
 async def _fetch_coming_soon(
@@ -298,8 +315,12 @@ async def run_sync(
     matcher: MovieSearcher | None = None,
     coming_soon: list[ComingSoonBatch] | None = None,
     coming_soon_sources: list[ComingSoonSourceConfig] | None = None,
+    local_now: datetime | None = None,
 ) -> SyncResult:
     """Run scrapers, update database, record snapshots, and transition film statuses.
+
+    All the websites are read first and the database is written only afterwards, in a
+    short transaction: while the sync waits on the network the app can still save votes.
 
     Args:
         db: SQLAlchemy database session.
@@ -314,14 +335,52 @@ async def run_sync(
             but only if showtimes are fetched live too (``scraper_results`` is None).
         coming_soon_sources: Multi-cinema coming-soon sites. Default: those in
             cinemas.yaml when using the configured cinemas, none for a custom cinema list.
+        local_now: Local time used to tell started shows from upcoming ones. Default: now,
+            or the start of ``as_of_date`` when simulating another day.
 
     Returns:
         SyncResult detailing films, showtimes, status changes, and any errors.
     """
     today = as_of_date or date.today()
     now = datetime.now(timezone.utc)
+    if local_now is None:
+        local_now = datetime.now() if today == date.today() else datetime.combine(today, time.min)
 
     target_cinemas = cinemas if cinemas is not None else settings.CINEMAS
+
+    # 1. Network: read every cinema's programme (no database writes while waiting)
+    fetched: dict[str, list[ShowtimeData]] = {}
+    fetch_errors: dict[str, str] = {}
+    for idx, cfg in enumerate(target_cinemas):
+        if scraper_errors and cfg.slug in scraper_errors:
+            fetch_errors[cfg.slug] = str(scraper_errors[cfg.slug])
+            continue
+        if scraper_results is not None:
+            fetched[cfg.slug] = scraper_results.get(cfg.slug, [])
+            continue
+
+        scraper_cls = SCRAPER_REGISTRY.get(cfg.scraper)
+        if scraper_cls is None:
+            # Misconfiguration: treat like a failed scraper so its films are not considered missing
+            fetch_errors[cfg.slug] = f"Scraper sconosciuto '{cfg.scraper}' in cinemas.yaml"
+            continue
+        if idx > 0 and delay_between_cinemas > 0:
+            await asyncio.sleep(delay_between_cinemas)
+        try:
+            fetched[cfg.slug] = await scraper_cls(cinema_slug=cfg.slug, url=cfg.url).scrape()
+        except Exception as err:
+            fetch_errors[cfg.slug] = str(err) or err.__class__.__name__
+
+    # 1b. Network: coming-soon pages ("prossimamente") of each cinema and of multi-cinema sites
+    coming_errors: dict[str, str] = {}
+    if coming_soon is None and scraper_results is None:
+        if coming_soon_sources is None:
+            coming_soon_sources = settings.COMING_SOON_SOURCES if cinemas is None else []
+        coming_soon, coming_errors = await _fetch_coming_soon(
+            target_cinemas, coming_soon_sources, delay_between_cinemas
+        )
+
+    # From here on: database only
     cinema_map: dict[str, Cinema] = {}
     for cfg in target_cinemas:
         cinema_map[cfg.slug] = _get_or_create_cinema(db, cfg)
@@ -330,46 +389,17 @@ async def run_sync(
     failed_cinema_slugs: set[str] = set()
     sync_errors: dict[str, str] = {}
 
-    # 1. Fetch data from scrapers or injected mock data
-    for idx, cfg in enumerate(target_cinemas):
+    for cfg in target_cinemas:
         cinema = cinema_map[cfg.slug]
-
-        # Check injected errors
-        if scraper_errors and cfg.slug in scraper_errors:
-            err_msg = str(scraper_errors[cfg.slug])
+        if cfg.slug in fetch_errors:
+            err_msg = fetch_errors[cfg.slug]
             logger.error("Scraper for %s (%s) failed: %s", cfg.name, cfg.slug, err_msg)
             failed_cinema_slugs.add(cfg.slug)
             sync_errors[cfg.slug] = err_msg
             db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="error", error_message=err_msg, created_at=now))
             continue
 
-        if scraper_results is not None:
-            items = scraper_results.get(cfg.slug, [])
-        else:
-            scraper_cls = SCRAPER_REGISTRY.get(cfg.scraper)
-            if scraper_cls is None:
-                # Misconfiguration: treat like a failed scraper so its films are not considered missing
-                err_msg = f"Scraper sconosciuto '{cfg.scraper}' in cinemas.yaml"
-                logger.error("Cinema %s (%s): %s", cfg.name, cfg.slug, err_msg)
-                failed_cinema_slugs.add(cfg.slug)
-                sync_errors[cfg.slug] = err_msg
-                db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="error", error_message=err_msg, created_at=now))
-                continue
-
-            if idx > 0 and delay_between_cinemas > 0:
-                await asyncio.sleep(delay_between_cinemas)
-
-            try:
-                scraper = scraper_cls(cinema_slug=cfg.slug, url=cfg.url)
-                items = await scraper.scrape()
-            except Exception as err:
-                err_msg = str(err)
-                logger.error("Scraper for %s (%s) raised exception: %s", cfg.name, cfg.slug, err_msg)
-                failed_cinema_slugs.add(cfg.slug)
-                sync_errors[cfg.slug] = err_msg
-                db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="error", error_message=err_msg, created_at=now))
-                continue
-
+        items = fetched[cfg.slug]
         # Check for anomaly: 0 showtimes returned for a cinema that previously had programming
         prev_shows_count = db.query(Showtime).filter_by(cinema_id=cinema.id).count()
         if len(items) == 0 and prev_shows_count > 0:
@@ -382,15 +412,7 @@ async def run_sync(
 
         scraped_data[cfg.slug] = items
         db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="ok", showtimes_count=len(items), created_at=now))
-
-    # 1b. Coming-soon pages ("prossimamente") of each cinema and of multi-cinema sites
-    if coming_soon is None and scraper_results is None:
-        if coming_soon_sources is None:
-            coming_soon_sources = settings.COMING_SOON_SOURCES if cinemas is None else []
-        coming_soon, coming_errors = await _fetch_coming_soon(
-            target_cinemas, coming_soon_sources, delay_between_cinemas
-        )
-        sync_errors.update(coming_errors)
+    sync_errors.update(coming_errors)
 
     # 2. Process showtimes for successful scrapers
     seen_film_ids_today: set[int] = set()
@@ -398,21 +420,26 @@ async def run_sync(
     new_films: list[Film] = []
     status_changes: list[SyncChange] = []
     total_showtimes_processed = 0
+    showtimes_removed = 0
 
     for slug, items in scraped_data.items():
         cinema = cinema_map[slug]
         if cinema.id not in cinema_films_today:
             cinema_films_today[cinema.id] = {}
+        listed_shows: list[Showtime] = []  # shows on the cinema's page right now
 
         for item in items:
             cleaned = clean_title(item.raw_title, reference_date=today)
 
-            # Purge eventuali spettacoli salvati in precedenza prima di release_from
+            # Purge eventuali spettacoli salvati in precedenza prima di release_from.
+            # Solo per questo cinema: la data "DAL ..." scritta da un cinema non vale per gli
+            # altri (es. un'anteprima del 15/12 altrove deve restare).
             if cleaned.release_from:
                 f_existing = _find_film(db, normalize_title(cleaned))
                 if f_existing:
                     db.query(Showtime).filter(
                         Showtime.film_id == f_existing.id,
+                        Showtime.cinema_id == cinema.id,
                         Showtime.date < cleaned.release_from,
                     ).delete(synchronize_session=False)
 
@@ -470,6 +497,7 @@ async def run_sync(
                     existing_show.tags = ",".join(item.tags)
                 if item.source_url:
                     existing_show.source_url = item.source_url
+                listed_shows.append(existing_show)
             else:
                 new_show = Showtime(
                     film_id=film.id,
@@ -483,10 +511,16 @@ async def run_sync(
                     scraped_at=now,
                 )
                 db.add(new_show)
+                listed_shows.append(new_show)
 
             total_showtimes_processed += 1
             seen_film_ids_today.add(film.id)
             cinema_films_today[cinema.id][film.id] = cinema_films_today[cinema.id].get(film.id, 0) + 1
+
+        db.flush()
+        showtimes_removed += _remove_cancelled_showtimes(
+            db, cinema.id, {show.id for show in listed_shows}, local_now
+        )
 
     db.flush()
 
@@ -548,6 +582,8 @@ async def run_sync(
     match_report: MatchReport | None = None
     if matcher is not None:
         new_film_ids = [f.id for f in new_films]
+        # Save before talking to TMDB: the database must not stay locked during the requests
+        db.commit()
         match_report = await match_pending_films(db, matcher, today=today)
         merges = match_report.merges
         if merges:
@@ -701,6 +737,7 @@ async def run_sync(
         errors=sync_errors,
         snapshots_created=snapshots_created,
         snapshots_updated=snapshots_updated,
+        showtimes_removed=showtimes_removed,
         matching=match_report,
         coming_soon=coming_counts,
     )

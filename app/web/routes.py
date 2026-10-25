@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -22,6 +22,7 @@ from app.services import export as export_service
 from app.services.backup import list_backups
 from app.services.matching import STATUS_NOT_FOUND, STATUS_REVIEW, confirm_match, search_manual
 from app.services.runner import SyncAlreadyRunning, is_sync_running, run_full_sync
+from app.services.schedule import programme_day, show_datetime
 from app.services.sync import is_event_film
 from app.services.tmdb import TmdbClient
 
@@ -37,7 +38,6 @@ MONTHS = [
 VOTES = ("V", "?", "X")
 VOTE_FILTERS = {"V": "V", "?": "?", "X": "X", "nessuno": None}
 REVIEW_STATUSES = (STATUS_REVIEW, STATUS_NOT_FOUND)
-LATE_SHOW_CUTOFF = time(6, 0)  # shows listed before this hour run after midnight
 
 
 def _now() -> datetime:
@@ -94,17 +94,6 @@ async def get_tmdb() -> AsyncIterator[TmdbClient | None]:
 # ------------------------------------------------------------------
 # View models
 # ------------------------------------------------------------------
-
-
-def programme_day(now: datetime) -> date:
-    """The cinema day in progress: until 06:00 it is still the previous evening's programme."""
-    return now.date() - timedelta(days=1) if now.time() < LATE_SHOW_CUTOFF else now.date()
-
-
-def show_datetime(day: date, at: time) -> datetime:
-    """Real start of a screening listed under ``day``: shows before 06:00 run after midnight."""
-    start = datetime.combine(day, at)
-    return start + timedelta(days=1) if at < LATE_SHOW_CUTOFF else start
 
 
 @dataclass

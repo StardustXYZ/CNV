@@ -88,6 +88,8 @@ async def main_async() -> SyncResult:
             _print_matching(result.matching)
 
         print(f"\n[OK] Spettacoli elaborati: {result.showtimes}")
+        if result.showtimes_removed:
+            print(f"[~] Spettacoli tolti perché cancellati o spostati dai cinema: {result.showtimes_removed}")
         print(f"[OK] Snapshot giornalieri: creati {result.snapshots_created}, aggiornati {result.snapshots_updated}")
 
         # 3. Overall DB stats
