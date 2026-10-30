@@ -1,4 +1,4 @@
-"""ORM models – Cinema, Film, FilmAlias, ComingSoon, Showtime, DailySnapshot, SyncRun, SyncLog."""
+"""ORM models – Cinema, Film, FilmAlias, FilmMerge, ComingSoon, Showtime, DailySnapshot, SyncRun, SyncLog."""
 
 from __future__ import annotations
 
@@ -162,6 +162,23 @@ class FilmAlias(Base):
 
     def __repr__(self) -> str:
         return f"<FilmAlias {self.normalized_title!r} -> {self.film_id}>"
+
+
+class FilmMerge(Base):
+    """A duplicate film merged into another: deleted id -> id of the film that absorbed it.
+
+    The phone keeps votes by film id: with this list it moves a vote given to the deleted
+    copy onto the surviving film. New films never reuse an id listed here.
+    """
+
+    __tablename__ = "film_merges"
+
+    old_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    new_id: Mapped[int] = mapped_column(Integer, index=True)
+    merged_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+
+    def __repr__(self) -> str:
+        return f"<FilmMerge {self.old_id} -> {self.new_id}>"
 
 
 class ComingSoon(Base):

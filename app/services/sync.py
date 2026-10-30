@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import CinemaConfig, ComingSoonSourceConfig, settings
-from app.db.models import Cinema, ComingSoon, DailySnapshot, Film, FilmAlias, Showtime, SyncRun
+from app.db.models import Cinema, ComingSoon, DailySnapshot, Film, FilmAlias, FilmMerge, Showtime, SyncRun
 from app.scrapers.base import BaseScraper, ComingSoonData, ShowtimeData, clean_title
 from app.scrapers.cosenzacinema import CosenzaCinemaScraper
 from app.scrapers.eighteen_tickets import EighteenTicketsScraper
@@ -155,6 +155,17 @@ def _find_film(db: Session, norm: str) -> Film | None:
     return film
 
 
+def _new_film_id(db: Session) -> int:
+    """Id for a new film, never the id of a merged (deleted) one.
+
+    SQLite would reuse the highest id after a merge deleted that film, and a vote kept
+    on the phone for the deleted copy would land on an unrelated new film.
+    """
+    last_film = db.query(func.max(Film.id)).scalar() or 0
+    last_merged = db.query(func.max(FilmMerge.old_id)).scalar() or 0
+    return max(last_film, last_merged) + 1
+
+
 def _get_or_create_film(db: Session, raw_title: str, today: date | None = None) -> tuple[Film, bool]:
     cleaned = clean_title(raw_title, reference_date=today)
     norm = normalize_title(cleaned or raw_title)
@@ -162,6 +173,7 @@ def _get_or_create_film(db: Session, raw_title: str, today: date | None = None) 
     now = datetime.now(timezone.utc)
     if film is None:
         film = Film(
+            id=_new_film_id(db),
             raw_title=cleaned or raw_title,
             normalized_title=norm,
             status="in_uscita",
@@ -257,6 +269,7 @@ def _apply_coming_soon(
             film = _find_film(db, norm)
             if film is None:
                 film = Film(
+                    id=_new_film_id(db),
                     raw_title=cleaned,
                     normalized_title=norm,
                     status="in_uscita",

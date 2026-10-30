@@ -22,7 +22,7 @@ import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.models import ComingSoon, DailySnapshot, Film, FilmAlias, Showtime
+from app.db.models import ComingSoon, DailySnapshot, Film, FilmAlias, FilmMerge, Showtime
 from app.services.tmdb import MovieSearcher, TmdbMovie
 from app.services.titles import normalize_title
 
@@ -337,6 +337,12 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     if other.status == "in_sala" and survivor.status != "in_sala":
         survivor.status = "in_sala"
         survivor.in_theaters = True
+
+    # Remember the merge, also for films merged earlier into ``other``: the phone moves
+    # votes given to a deleted copy onto the survivor
+    for earlier in db.query(FilmMerge).filter_by(new_id=other.id):
+        earlier.new_id = survivor.id
+    db.add(FilmMerge(old_id=other.id, new_id=survivor.id))
 
     db.flush()
     db.expire(other)

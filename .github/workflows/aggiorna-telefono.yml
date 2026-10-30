@@ -39,11 +39,21 @@ jobs:
       - name: Recupera il database
         run: |
           mkdir -p dati
-          if git fetch --quiet --depth=1 origin dati; then
+          # 0 = il ramo esiste, 2 = non esiste ancora; altro = errore di rete o di GitHub.
+          # Solo se il ramo manca davvero si parte da un database nuovo: altrimenti si
+          # sovrascriverebbe quello vero e i voti del telefono finirebbero su altri film.
+          found=0
+          git ls-remote --exit-code --heads origin dati > /dev/null || found=$?
+          if [ "$found" -eq 0 ]; then
+            git fetch --quiet --depth=1 origin dati
             git show FETCH_HEAD:cnv.db > dati/cnv.db
+            test -s dati/cnv.db
             echo "Database recuperato dal ramo dati"
-          else
+          elif [ "$found" -eq 2 ]; then
             echo "Primo avvio: database nuovo"
+          else
+            echo "::error::Non riesco a controllare il ramo dati: aggiornamento annullato, il sito resta quello di ieri"
+            exit 1
           fi
 
       - uses: actions/setup-python@v5

@@ -9,14 +9,17 @@ const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 const VOTES = ["V", "?", "X"];
 const VOTE_TITLES = { "V": "Voglio vederlo", "?": "Non so", "X": "Non mi interessa" };
+const VOTE_PRIORITY = { "V": 3, "?": 2, "X": 1 }; // two merged copies keep the most interested vote
 const LATE_SHOW_CUTOFF = "06:00"; // shows listed before this hour run after midnight
 const STALE_AFTER_HOURS = 30;
+const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
 
 let DATA = null;
 let FILMS = new Map();
 let CINEMAS = new Map();
 let votes = load("cnv.votes", {});        // film id -> "V" | "?" | "X"
 let exported = load("cnv.exported", {});  // film id -> date the CSV was imported on Letterboxd
+let shownPage = "";                       // HTML of the page on screen, for the minute refresh
 
 // ------------------------------------------------------------------ helpers
 
@@ -115,7 +118,9 @@ function cinemaReleases(film, ctx) {
 }
 const hasShows = (film, ctx) => (ctx.firstByCinema.get(film.id) || new Map()).size > 0;
 const cinemaName = (slug) => (CINEMAS.get(slug) || { name: slug }).name;
-const toExport = () => DATA.films.filter((f) => f.status === "uscito" && ["V", "?"].includes(votes[f.id]) && !exported[f.id]);
+const watched = (f) => f.status === "uscito" && ["V", "?"].includes(votes[f.id]);
+/** Films that go in the next Letterboxd file: without TMDB they cannot be imported. */
+const toExport = () => DATA.films.filter((f) => watched(f) && !exported[f.id] && f.tmdb);
 
 // ------------------------------------------------------------------ pieces of page
 
@@ -197,7 +202,7 @@ function pageInSala(ctx, params) {
         ? `<div class="film-grid">${showing.map((f) => filmCard(f, ctx, "oggi")).join("")}</div>`
         : `<p class="empty-state">${voto ? "Nessun film in sala con questo filtro." : "Nessun film in programmazione."}</p>`;
     if (gone.length) {
-        html += `<details class="gone-section"><summary>Non più in programmazione <span class="count">${gone.length}</span>
+        html += `<details class="gone-section" data-key="gone"><summary>Non più in programmazione <span class="count">${gone.length}</span>
             <span class="small">— spariti dai siti dei cinema, in attesa di essere segnati come usciti</span></summary>
             <ul class="gone-list">${gone.map((f) => {
                 const days = f.event ? DATA.settings.days_to_uscito_evento : DATA.settings.days_to_uscito;
@@ -254,8 +259,8 @@ function pageCinema(ctx, slug, params) {
 }
 
 function pageWatchlist() {
-    const watch = DATA.films.filter((f) => f.status === "uscito" && ["V", "?"].includes(votes[f.id]));
-    const ready = watch.filter((f) => !exported[f.id] && f.tmdb);
+    const watch = DATA.films.filter(watched);
+    const ready = toExport();
     const missing = watch.filter((f) => !exported[f.id] && !f.tmdb);
     const done = watch.filter((f) => exported[f.id]).sort((a, b) => exported[b.id].localeCompare(exported[a.id]));
     let html = `<header class="page-header"><h1>Watchlist</h1>
@@ -278,7 +283,7 @@ function pageWatchlist() {
         html += `<p class="empty-state">Nessun film da esportare per ora.<br>Quando un film segnato <strong>V</strong> o <strong>?</strong> esce da tutte le sale, apparirà qui.</p>`;
     }
     if (done.length) {
-        html += `<details class="gone-section"><summary>Già esportati <span class="count">${done.length}</span></summary>
+        html += `<details class="gone-section" data-key="done"><summary>Già esportati <span class="count">${done.length}</span></summary>
             <ul class="gone-list">${done.map((f) => `<li><span class="gone-title">${esc(f.title)}${f.year ? ` (${f.year})` : ""}</span>
                 <span class="small">esportato il ${formatDay(exported[f.id], isoDate(new Date()))}</span>
                 <button class="btn" data-action="export-again" data-film="${f.id}">Esporta di nuovo</button></li>`).join("")}</ul></details>`;
@@ -305,7 +310,10 @@ function route() {
     return { path, params: new URLSearchParams(query || "") };
 }
 
-function render() {
+/** Draw the page. ``periodic``: the minute refresh, which only redraws when something
+ * changed (a show started), keeps open sections open and leaves the Voti page alone,
+ * where a backup file may be being chosen. */
+function render(periodic = false) {
     if (!DATA) return;
     const ctx = buildContext(new Date());
     const { path, params } = route();
@@ -319,7 +327,15 @@ function render() {
     else if (path === "/voti") { page = pageVoti(); active = "voti"; }
     else { page = pageInSala(ctx, params); active = "sala"; }
 
-    document.getElementById("app").innerHTML = page;
+    const app = document.getElementById("app");
+    if (!periodic) {
+        app.innerHTML = page;
+    } else if (path !== "/voti" && page !== shownPage) {
+        const open = [...app.querySelectorAll("details[data-key][open]")].map((d) => d.dataset.key);
+        app.innerHTML = page;
+        open.forEach((key) => app.querySelector(`details[data-key="${key}"]`)?.setAttribute("open", ""));
+    }
+    if (!periodic || path !== "/voti") shownPage = page;
     renderNav(ctx, active);
     renderMenu(ctx, active);
 }
@@ -363,7 +379,7 @@ function download(name, type, content) {
 
 function letterboxdCsv() {
     const quote = (s) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    const rows = toExport().filter((f) => f.tmdb).map((f) => [f.tmdb, quote(f.title), f.year || ""].join(","));
+    const rows = toExport().map((f) => [f.tmdb, quote(f.title), f.year || ""].join(","));
     return ["tmdbID,Title,Year", ...rows].join("\n") + "\n";
 }
 
@@ -385,7 +401,7 @@ document.addEventListener("click", (e) => {
     const today = isoDate(new Date());
     if (action === "export-csv") download(`letterboxd_watchlist_${today}.csv`, "text/csv", letterboxdCsv());
     if (action === "mark-exported" && confirm("Hai importato il file su Letterboxd?")) {
-        toExport().filter((f) => f.tmdb).forEach((f) => { exported[f.id] = today; });
+        toExport().forEach((f) => { exported[f.id] = today; });
         save("cnv.exported", exported);
         render();
     }
@@ -414,21 +430,59 @@ document.addEventListener("change", (e) => {
 });
 
 window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
-setInterval(render, 60 * 1000); // started shows disappear while the app stays open
+setInterval(() => render(true), 60 * 1000); // started shows disappear while the app stays open
 
 // ------------------------------------------------------------------ start
+
+/** Votes given to a duplicate that the sync merged into another film move to that film. */
+function applyMerges(merged) {
+    let changed = false;
+    for (const [old, target] of Object.entries(merged || {})) {
+        if (votes[old]) {
+            if ((VOTE_PRIORITY[votes[old]] || 0) > (VOTE_PRIORITY[votes[target]] || 0)) votes[target] = votes[old];
+            delete votes[old];
+            changed = true;
+        }
+        if (exported[old]) {
+            if (!exported[target] || exported[old] > exported[target]) exported[target] = exported[old];
+            delete exported[old];
+            changed = true;
+        }
+    }
+    if (changed) {
+        save("cnv.votes", votes);
+        save("cnv.exported", exported);
+    }
+}
+
+/** Saved posters of films no page shows any more are removed from the phone. */
+function prunePosters() {
+    if (!("caches" in window)) return;
+    const shown = new Set(toExport());
+    const keep = new Set(DATA.films.filter((f) => f.status !== "uscito" || shown.has(f)).map((f) => f.poster));
+    caches.open(POSTER_CACHE)
+        .then((cache) => cache.keys().then((requests) =>
+            Promise.all(requests.filter((r) => !keep.has(r.url)).map((r) => cache.delete(r)))))
+        .catch(() => { /* nothing saved, nothing to remove */ });
+}
 
 function start(data, offline) {
     DATA = data;
     FILMS = new Map(data.films.map((f) => [f.id, f]));
     CINEMAS = new Map(data.cinemas.map((c) => [c.slug, c]));
+    applyMerges(data.merged);
     render();
     showUpdated(offline);
+    if (!offline) prunePosters();
 }
 
 fetch("data.json", { cache: "no-cache" })
-    .then((resp) => { if (!resp.ok) throw new Error(resp.status); return resp.json(); })
-    .then((data) => start(data, !navigator.onLine))
+    .then((resp) => {
+        if (!resp.ok) throw new Error(resp.status);
+        // sw.js marks the copy saved on the phone, served when the network does not answer
+        const offline = resp.headers.get("X-CNV-Offline") === "1" || !navigator.onLine;
+        return resp.json().then((data) => start(data, offline));
+    })
     .catch(() => {
         document.getElementById("app").innerHTML =
             `<p class="empty-state">Non riesco a scaricare i dati. Controlla la connessione e riapri CNV.</p>`;

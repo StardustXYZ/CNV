@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 import json
 
-from app.db.models import Cinema, ComingSoon, Film, Showtime
+from app.db.models import Cinema, ComingSoon, Film, FilmMerge, Showtime
 from app.export_static import build_data, build_site
 
 TODAY = date(2026, 10, 30)
@@ -64,3 +64,15 @@ def test_build_site(db, tmp_path):
     assert json.loads((out / "data.json").read_text(encoding="utf-8")) == data
     sw = (out / "sw.js").read_text(encoding="utf-8")
     assert "__BUILD__" not in sw and data["generated_at"] in sw
+
+
+def test_build_data_lists_merged_films(db):
+    clay, doubt = _seed(db)
+    db.add_all([
+        FilmMerge(old_id=50, new_id=clay.id),       # deleted copy of Clayface
+        FilmMerge(old_id=doubt.id, new_id=clay.id),  # id that belongs to a film again: left out
+        FilmMerge(old_id=60, new_id=999),            # survivor gone too: nothing to move to
+    ])
+    db.commit()
+
+    assert build_data(db, today=TODAY, now=NOW)["merged"] == {"50": clay.id}

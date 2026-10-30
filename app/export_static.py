@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.config import ROOT_DIR, settings
 from app.db.engine import SessionLocal, init_db
-from app.db.models import Cinema, ComingSoon, Film, Showtime
+from app.db.models import Cinema, ComingSoon, Film, FilmMerge, Showtime
 
 PHONE_DIR = ROOT_DIR / "phone"
 STYLE_CSS = ROOT_DIR / "app" / "web" / "static" / "style.css"
@@ -65,6 +65,14 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         }
         for f in db.query(Film).order_by(Film.id)
     ]
+    # Merged duplicates (deleted id -> surviving id): the phone moves votes given to the
+    # deleted copy. Ids that belong to a film again are left out.
+    film_ids = {f["id"] for f in films}
+    merged = {
+        str(m.old_id): m.new_id
+        for m in db.query(FilmMerge)
+        if m.old_id not in film_ids and m.new_id in film_ids
+    }
     return {
         "generated_at": now.isoformat(timespec="minutes"),
         "settings": {
@@ -75,6 +83,7 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         "films": films,
         "shows": shows,
         "coming": coming,
+        "merged": merged,
     }
 
 

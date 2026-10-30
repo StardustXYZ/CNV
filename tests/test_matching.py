@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from app.config import CinemaConfig
-from app.db.models import DailySnapshot, Film, FilmAlias, Showtime
+from app.db.models import DailySnapshot, Film, FilmAlias, FilmMerge, Showtime
 from app.scrapers.base import ShowtimeData
 from app.services.matching import (
     STATUS_MATCHED,
@@ -294,3 +294,20 @@ def test_merge_keeps_the_most_interested_vote(db):
         survivor, other = film(f"A{expected}{survivor_vote}", survivor_vote), film(f"B{expected}{other_vote}", other_vote)
         merge_films(db, survivor, other)
         assert survivor.vote == expected
+
+
+def test_merge_is_recorded_and_ids_are_not_reused(db):
+    from app.services.matching import merge_films
+    from app.services.sync import _get_or_create_film
+
+    first, _ = _get_or_create_film(db, "PRIMO", TODAY)
+    second, _ = _get_or_create_film(db, "SECONDO", TODAY)
+    third, _ = _get_or_create_film(db, "TERZO", TODAY)
+    merge_films(db, second, third)
+    merge_films(db, first, second)
+
+    # Earlier merges follow the film that absorbed them
+    assert {(m.old_id, m.new_id) for m in db.query(FilmMerge)} == {(third.id, first.id), (second.id, first.id)}
+    # The highest id was deleted: a new film must not take it, or a phone vote would move to it
+    new, created = _get_or_create_film(db, "QUARTO", TODAY)
+    assert created and new.id == third.id + 1
