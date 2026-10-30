@@ -1,0 +1,83 @@
+# CNV sul telefono: ogni mattina aggiorna i dati e pubblica il sito su GitHub Pages.
+#
+# 1. recupera il database dal ramo "dati" (se esiste già)
+# 2. fa il sync: siti dei cinema, prossimamente, TMDB, stati dei film
+# 3. salva il database nel ramo "dati" (un solo commit, sovrascritto ogni volta)
+# 4. costruisce il sito (phone/ + data.json) e lo pubblica su GitHub Pages
+#
+# Serve: repository pubblico, segreto TMDB_API_KEY, Settings -> Pages -> Source: GitHub Actions.
+name: Aggiorna CNV per il telefono
+
+on:
+  schedule:
+    - cron: "15 5 * * *"   # ogni giorno alle 05:15 UTC (06:15 o 07:15 in Italia)
+  workflow_dispatch:         # e a mano: Actions -> Aggiorna CNV per il telefono -> Run workflow
+
+permissions:
+  contents: write   # salvare il database nel ramo "dati"
+  pages: write
+  id-token: write
+
+concurrency:
+  group: aggiorna-telefono
+  cancel-in-progress: false
+
+jobs:
+  aggiorna:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.pubblica.outputs.page_url }}
+    env:
+      TZ: Europe/Rome                                   # "oggi" è il giorno italiano
+      DATABASE_URL: sqlite:///${{ github.workspace }}/dati/cnv.db
+      AUTO_SYNC: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recupera il database
+        run: |
+          mkdir -p dati
+          if git fetch --quiet --depth=1 origin dati; then
+            git show FETCH_HEAD:cnv.db > dati/cnv.db
+            echo "Database recuperato dal ramo dati"
+          else
+            echo "Primo avvio: database nuovo"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installa CNV
+        run: pip install -e .
+
+      - name: Sync (cinema, prossimamente, TMDB)
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python -m app.sync
+
+      - name: Salva il database nel ramo dati
+        run: |
+          cp dati/cnv.db "$RUNNER_TEMP/cnv.db"
+          cd "$RUNNER_TEMP"
+          mkdir ramo-dati && mv cnv.db ramo-dati/ && cd ramo-dati
+          git init --quiet --initial-branch=dati
+          git add cnv.db
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "Database CNV del $(date +%d/%m/%Y)"
+          git push --quiet --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" dati
+
+      - name: Costruisci il sito per il telefono
+        run: python -m app.export_static --out site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Pubblica su GitHub Pages
+        id: pubblica
+        uses: actions/deploy-pages@v4

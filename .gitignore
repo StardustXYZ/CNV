@@ -31,3 +31,6 @@ Thumbs.db
 # Backups and logs
 backups/
 logs/
+
+# Phone site built locally (python -m app.export_static)
+site/

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1e1e1e">
+    <title>CNV – Chi Ni Vidimu</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="phone.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-left">
+            <details class="cinema-menu">
+                <summary title="Spettacoli di un singolo cinema">☰ <span class="cinema-menu-label">Cinema</span></summary>
+                <ul id="cinema-menu"></ul>
+            </details>
+            <a href="#/" class="logo">🎬 CNV <span class="logo-sub">Chi Ni Vidimu</span></a>
+        </div>
+        <div class="nav-links" id="nav-links"></div>
+    </nav>
+    <main class="container" id="app">
+        <p class="empty-state">Caricamento…</p>
+    </main>
+    <footer class="footer">
+        <small id="updated"></small>
+        <small class="tmdb-credit">
+            Dati e locandine da <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a>.
+            Questo prodotto usa le API di TMDB ma non è approvato né certificato da TMDB.
+        </small>
+    </footer>
+    <script src="app.js"></script>
+</body>
+</html>

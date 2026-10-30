@@ -1,0 +1,8 @@
+/* ---- Phone version: additions to the PC stylesheet ---- */
+
+body { padding-bottom: env(safe-area-inset-bottom); }
+.vote-buttons button { touch-action: manipulation; }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 1.5rem; }
+.backup-actions label.btn { cursor: pointer; }
+.backup-actions input[type="file"] { display: none; }
+.offline-note { color: var(--yellow); }
