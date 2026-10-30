@@ -1,0 +1,32 @@
+# Prova: i siti dei cinema rispondono dai server di GitHub?
+# Parte da sola quando questo file viene caricato su GitHub, oppure a mano da
+# Actions -> "Prova siti cinema" -> Run workflow. Non usa il database né la chiave TMDB.
+name: Prova siti cinema
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prova-siti.yml"
+      - "app/check_sites.py"
+
+permissions:
+  contents: read
+
+jobs:
+  prova:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installa CNV
+        run: pip install -e .
+
+      - name: Leggi i siti dei cinema
+        run: python -m app.check_sites
