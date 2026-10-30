@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ cinema.name }}{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>{{ cinema.name }}</h1>
+    <a href="{{ cinema.url }}" target="_blank" rel="noopener" class="btn">Sito del cinema ↗</a>
+    <p class="subtitle">Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.</p>
+</header>
+
+{% if days %}
+<nav class="calendar" aria-label="Giorni in programmazione">
+    {% for d in days %}
+    <a href="/cinema/{{ cinema.slug }}?giorno={{ d.isoformat() }}" class="day-chip{% if d == selected %} active{% endif %}">
+        <span class="day-name">{% if d == first_day %}Oggi{% else %}{{ d | giorno(first_day) | capitalize }}{% endif %}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<div class="day-films">
+    {% for item in films %}
+    {% set film = item.film %}
+    <article class="day-film">
+        {% if film.poster_url and film.is_tmdb_confirmed %}
+        <img src="{{ film.poster_url }}" alt="" class="thumb" loading="lazy">
+        {% else %}
+        <div class="thumb placeholder">🎬</div>
+        {% endif %}
+        <div class="day-film-info">
+            <h3>{{ item.title }}</h3>
+            <div class="meta">
+                {% if film.year and film.is_tmdb_confirmed %}<span>{{ film.year }}</span>{% endif %}
+                {% if film.is_event %}<span class="tag">Evento</span>{% endif %}
+                <a href="/film/{{ film.id }}/abbinamento" class="ext-link change-match">{% if film.is_tmdb_confirmed %}cambia{% else %}abbina{% endif %}</a>
+            </div>
+            {% for s in item.salas %}
+            <p class="day-sala">{% include "_sala_shows.html" %}</p>
+            {% endfor %}
+            {% include "_vote.html" %}
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">
+    Il sito del cinema non ha spettacoli in programma.<br>
+    <a href="{{ cinema.url }}" target="_blank" rel="noopener">Controlla sul sito del cinema ↗</a>
+</p>
+{% endif %}
+{% endblock %}

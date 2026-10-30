@@ -213,3 +213,12 @@ async def test_garden_day_page_is_retried_once(monkeypatch, garden_html: str, ga
     showtimes = await CinemaGardenScraper(request_delay=0.0).scrape()
     assert calls["29-10"] == 2
     assert any(s.date == date(2026, 10, 29) for s in showtimes)
+
+
+def test_garden_showtimes_link_to_the_purchase_page_of_their_sala(garden_html: str):
+    items = parse_day_showtimes_html(garden_html, current_date=date(2026, 10, 16))
+    avengers = [it for it in items if "AVENGERS" in it.raw_title]
+    by_sala = {it.sala: it.booking_url for it in avengers}
+    assert by_sala["Sala A"].endswith("IDSpettacolo=26452")
+    assert by_sala["Sala Garden"].endswith("IDSpettacolo=26453")
+    assert all(it.booking_url.startswith("https://www.anyticket.it/") for it in items)

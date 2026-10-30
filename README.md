@@ -70,6 +70,9 @@ python -m app.launcher
 | **Da verificare** | Film che CNV non è riuscito ad abbinare con certezza a TMDB: si conferma il suggerimento o si cerca a mano. Se un film già abbinato ha locandina o titolo sbagliati, il link **cambia** sulla sua scheda apre la stessa ricerca |
 | **Watchlist** | Film usciti da tutte le sale segnati V o ?: si scarica il CSV per Letterboxd e si segnano come esportati |
 | **Stato** | Prossimo aggiornamento automatico, cronologia degli aggiornamenti, esito per ogni cinema e backup |
+| **Cinema** (menu ☰ a sinistra) | Un singolo cinema: gli spettacoli di oggi ancora da fare e un calendario con i soli giorni che il sito del cinema ha già in programma |
+
+Toccando un orario si apre la pagina d'acquisto di quello spettacolo sul sito del cinema (al Garden la pagina anyticket della sala; se la vendita online non è ancora aperta, la scheda del film).
 
 ## Come vengono decisi gli stati dei film
 

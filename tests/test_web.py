@@ -233,7 +233,8 @@ def test_home_shows_only_remaining_shows_of_today_by_cinema_and_sala(client, ses
         "2026-10-18T00:00",
         "2026-10-17T22:30",
     ]
-    assert html.index("Cinema Garden (Rende)") < html.index("Andromeda River")
+    main = html[html.index("<main"):]  # the cinema menu in the navbar lists them too
+    assert main.index("Cinema Garden (Rende)") < main.index("Andromeda River")
     assert html.index("Sala 1") < html.index("Sala 3")
     assert ">00:00<" in html
     assert "19:00" not in html and "17:00" not in html
@@ -447,3 +448,79 @@ def test_actions_from_other_websites_are_blocked(client, session, cinema):
 
     ok = client.post(f"/film/{film.id}/vote", data={"v": "V"}, headers={"origin": "http://testserver"})
     assert ok.status_code == 200
+
+
+# ------------------------------------------------------------------
+# Cinema menu and single-cinema page
+# ------------------------------------------------------------------
+
+
+def _show(db, film, cinema, day, at, sala="Sala 1", booking=None, source=""):
+    db.add(Showtime(film_id=film.id, cinema_id=cinema.id, date=day, time=at, sala=sala,
+                    booking_url=booking, source_url=source))
+    db.commit()
+
+
+def test_cinema_menu_lists_cinemas_with_films_still_on_today(client, session, cinema):
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    session.add(garden)
+    session.commit()
+    film = add_film(session, "Clayface", "in_sala", [], cinema)
+    _show(session, film, cinema, TODAY, time(21, 0))  # NOW is 17/10 20:00
+    _show(session, film, garden, TODAY, time(18, 0))  # already started
+
+    html = client.get("/in-uscita").text
+    menu = html[html.index('class="cinema-menu"'):html.index("</details>")]
+    assert 'href="/cinema/andromeda"' in menu and 'href="/cinema/garden"' in menu
+    assert 'title="Film ancora in programma oggi">1<' in menu
+    assert menu.count("Film ancora in programma oggi") == 1  # Garden has nothing left today
+
+
+def test_cinema_page_today_and_calendar(client, session, cinema):
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    session.add(garden)
+    session.commit()
+    clay = add_film(session, "Clayface", "in_sala", [], cinema, tmdb_id=1, tmdb_title="Clayface", tmdb_match_status="abbinato")
+    mamma = add_film(session, "Mammina", "in_sala", [], cinema)
+    _show(session, clay, cinema, TODAY, time(18, 0), booking="https://buy/started")  # before 20:00: hidden
+    _show(session, clay, cinema, TODAY, time(21, 0), "Sala 2", booking="https://buy/clay-21")
+    _show(session, mamma, cinema, TODAY, time(22, 15), "Sala 1", source="https://site/mammina")  # no booking link
+    _show(session, mamma, cinema, TODAY, time(0, 30), "Sala 1", booking="https://buy/late")  # tonight
+    _show(session, clay, cinema, TODAY + timedelta(days=2), time(20, 0), booking="https://buy/day2")
+    _show(session, clay, garden, TODAY, time(21, 30), booking="https://buy/garden")  # other cinema
+
+    html = client.get("/cinema/andromeda").text
+    main = html[html.index("<main"):]
+    # Calendar: today and the day after tomorrow only (nothing programmed tomorrow)
+    assert main.count('class="day-chip') == 2
+    assert ">Oggi<" in main and ">Lun 19/10<" in main
+    # Today: only shows still to come, sorted by start, each linking to its purchase page
+    assert "18:00" not in main and "garden" not in main
+    assert main.index("Clayface") < main.index("Mammina")
+    assert 'href="https://buy/clay-21" target="_blank"' in main
+    assert 'href="https://site/mammina"' in main  # falls back to the film page
+    assert 'data-show-at="2026-10-18T00:30"' in main
+
+    day2 = client.get("/cinema/andromeda", params={"giorno": "2026-10-19"}).text
+    day2_main = day2[day2.index("<main"):]
+    assert 'href="https://buy/day2"' in day2_main and "Mammina" not in day2_main
+    assert 'class="day-chip active"' in day2_main
+
+    # A day without shows (or a wrong value) shows the first available day
+    other = client.get("/cinema/andromeda", params={"giorno": "2026-10-18"}).text
+    assert 'href="https://buy/clay-21"' in other
+    assert client.get("/cinema/andromeda", params={"giorno": "boh"}).status_code == 200
+
+
+def test_cinema_page_without_shows_and_unknown_cinema(client, session, cinema):
+    html = client.get("/cinema/andromeda").text
+    assert "Il sito del cinema non ha spettacoli in programma." in html
+    assert client.get("/cinema/inesistente").status_code == 404
+
+
+def test_home_times_open_the_purchase_page_and_cinema_links_to_its_page(client, session, cinema):
+    film = add_film(session, "Clayface", "in_sala", [], cinema)
+    _show(session, film, cinema, TODAY, time(21, 0), booking="https://buy/clay-21")
+    html = client.get("/").text
+    assert 'href="https://buy/clay-21" target="_blank" rel="noopener"' in html
+    assert '<a href="/cinema/andromeda" title="Tutti gli spettacoli di questo cinema">Andromeda River</a>' in html

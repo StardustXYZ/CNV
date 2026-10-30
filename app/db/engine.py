@@ -51,6 +51,8 @@ def init_db() -> None:
             if "last_seen" not in columns:
                 conn.execute(text("ALTER TABLE showtimes ADD COLUMN last_seen DATETIME"))
                 conn.execute(text("UPDATE showtimes SET last_seen = scraped_at WHERE last_seen IS NULL"))
+            if "booking_url" not in columns:
+                conn.execute(text("ALTER TABLE showtimes ADD COLUMN booking_url VARCHAR(500)"))
 
         if "daily_snapshots" in inspector.get_table_names():
             # Deduplicate any potential duplicates keeping the one with max id

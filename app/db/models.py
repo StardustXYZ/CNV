@@ -201,6 +201,7 @@ class Showtime(Base):
     sala: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tags: Mapped[str | None] = mapped_column(String(200), nullable=True)
     source_url: Mapped[str] = mapped_column(String(500))
+    booking_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # buy this screening
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     scraped_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
 

@@ -151,3 +151,10 @@ def test_citrigno_coming_soon(citrigno_coming_soon_html: str):
     assert items[0].release_date == date(2026, 12, 15)
     assert items[0].source_url == "https://citrigno.cosenzacinema.18tickets.it/film/98245"
 
+
+
+def test_every_showtime_links_to_its_purchase_page(citrigno_html: str):
+    items = parse_showtimes_html(citrigno_html, cinema_slug="citrigno", base_url="https://citrigno.cosenzacinema.18tickets.it/")
+    assert items and all(it.booking_url for it in items)
+    assert items[0].booking_url.startswith("https://citrigno.cosenzacinema.18tickets.it/film/101645/")
+    assert items[0].booking_url != items[1].booking_url  # one page per screening

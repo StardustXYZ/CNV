@@ -104,6 +104,26 @@ def extract_current_page_date(html: str, url: str = "") -> date | None:
     return None
 
 
+def _purchase_links_after(sala_box) -> dict[str, str]:
+    """The film's "Acquista" buttons: one anyticket page per sala ("Sala A", "Sala Garden").
+
+    The times themselves have no link. The buttons come right after the film's times;
+    the page's HTML is malformed (film blocks overlap once parsed), so they are read in
+    document order, stopping at the next film's times instead of inside the film block.
+    """
+    links: dict[str, str] = {}
+    for el in sala_box.next_elements:
+        if getattr(el, "name", None) is None:
+            continue
+        classes = el.get("class") or []
+        if "sala-box" in classes:
+            break
+        href = (el.get("href") or "").strip()
+        if el.name == "a" and "button-acquisto" in classes and href:
+            links.setdefault(" ".join(el.stripped_strings).lower(), href)
+    return links
+
+
 def parse_day_showtimes_html(
     html: str,
     cinema_slug: str = DEFAULT_CINEMA_NAME,
@@ -160,6 +180,8 @@ def parse_day_showtimes_html(
         if not sala_box:
             continue
 
+        booking_by_sala = _purchase_links_after(sala_box)
+
         for uo in sala_box.find_all(class_="unOrario"):
             lines = [s.strip() for s in uo.stripped_strings if s.strip()]
             if not lines:
@@ -201,6 +223,7 @@ def parse_day_showtimes_html(
                     sala=sala_val,
                     tags=extra_tags,
                     source_url=sheet_url,
+                    booking_url=booking_by_sala.get((sala_val or "").lower(), ""),
                 )
             )
 

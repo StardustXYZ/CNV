@@ -497,6 +497,7 @@ async def run_sync(
                 existing_show.tags = ",".join(show_tags) or None
                 if item.source_url:
                     existing_show.source_url = item.source_url
+                existing_show.booking_url = item.booking_url or None
                 listed_shows.append(existing_show)
             else:
                 new_show = Showtime(
@@ -507,6 +508,7 @@ async def run_sync(
                     sala=item.sala,
                     tags=",".join(show_tags) or None,
                     source_url=item.source_url,
+                    booking_url=item.booking_url or None,
                     last_seen=now,
                     scraped_at=now,
                 )

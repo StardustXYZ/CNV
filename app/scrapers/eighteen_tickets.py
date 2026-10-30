@@ -98,6 +98,9 @@ def parse_showtimes_html(html: str, cinema_slug: str, base_url: str = "") -> lis
 
                 sala_str = lines[1] if len(lines) > 1 else None
                 extra_tags = lines[2:] if len(lines) > 2 else []
+                # Each time links to the purchase page of that screening
+                show_href = (a_show.get("href") or "").strip()
+                booking_url = urljoin(base_url, show_href) if "/film/" in show_href else ""
 
                 # Merge film labels and showtime tags, deduplicating while preserving order
                 merged_tags: list[str] = []
@@ -114,6 +117,7 @@ def parse_showtimes_html(html: str, cinema_slug: str, base_url: str = "") -> lis
                         sala=sala_str,
                         tags=merged_tags,
                         source_url=sheet_url,
+                        booking_url=booking_url,
                     )
                 )
 

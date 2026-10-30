@@ -216,6 +216,7 @@ class ShowtimeData:
     sala: str | None = None
     tags: list[str] = field(default_factory=list)  # e.g. ["3D", "VO", "ATMOS"]
     source_url: str = ""  # URL of the movie details sheet
+    booking_url: str = ""  # page where this screening can be bought, if the site has one
 
 
 @dataclass

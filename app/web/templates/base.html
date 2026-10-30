@@ -10,7 +10,22 @@
 </head>
 <body>
     <nav class="navbar">
-        <a href="/" class="logo">🎬 CNV <span class="logo-sub">Chi Ni Vidimu</span></a>
+        <div class="nav-left">
+            <details class="cinema-menu">
+                <summary title="Spettacoli di un singolo cinema">☰ <span class="cinema-menu-label">Cinema</span></summary>
+                <ul>
+                    {% for c in cinema_menu %}
+                    <li>
+                        <a href="/cinema/{{ c.slug }}" class="{% if active == 'cinema:' ~ c.slug %}active{% endif %}">
+                            <span>{{ c.name }}</span>
+                            {% if c.films_today %}<span class="count" title="Film ancora in programma oggi">{{ c.films_today }}</span>{% endif %}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            <a href="/" class="logo">🎬 CNV <span class="logo-sub">Chi Ni Vidimu</span></a>
+        </div>
         <div class="nav-links">
             {% set links = [
                 ("in_sala", "/", "In sala"),
@@ -65,8 +80,26 @@
                     el.outerHTML = '<p class="small no-shows">Oggi non ci sono altri spettacoli.</p>';
                 }
             });
+            // Cinema page
+            document.querySelectorAll(".day-sala").forEach((el) => {
+                if (!el.querySelector("[data-show-at]")) el.remove();
+            });
+            document.querySelectorAll(".day-film").forEach((el) => {
+                if (!el.querySelector(".day-sala")) el.remove();
+            });
+            document.querySelectorAll(".day-films").forEach((el) => {
+                if (!el.querySelector(".day-film")) {
+                    el.outerHTML = '<p class="empty-state">Per oggi non ci sono altri spettacoli: scegli un altro giorno.</p>';
+                }
+            });
         }
         setInterval(hidePastShows, 60 * 1000);
+
+        // Cinema menu: close it when clicking elsewhere
+        document.addEventListener("click", (e) => {
+            const menu = document.querySelector(".cinema-menu");
+            if (menu && menu.open && !menu.contains(e.target)) menu.open = false;
+        });
     </script>
 </body>
 </html>

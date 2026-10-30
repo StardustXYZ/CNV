@@ -97,15 +97,39 @@ async def get_tmdb() -> AsyncIterator[TmdbClient | None]:
 
 
 @dataclass
+class ShowLink:
+    start: datetime
+    url: str  # where to buy it: the screening's page, else the film's page on the cinema site
+
+
+@dataclass
 class SalaShows:
     sala: str | None
-    starts: list[datetime] = field(default_factory=list)
+    shows: list[ShowLink] = field(default_factory=list)
+
+    @property
+    def first_start(self) -> datetime:
+        return self.shows[0].start
 
 
 @dataclass
 class CinemaToday:
     cinema: str
+    slug: str
     salas: list[SalaShows] = field(default_factory=list)
+
+
+def _group_by_sala(by_sala: dict[str | None, dict[datetime, str]]) -> list[SalaShows]:
+    """{sala: {start: url}} -> salas sorted by their first show, shows sorted by time."""
+    salas = [
+        SalaShows(sala=sala, shows=[ShowLink(start=start, url=url) for start, url in sorted(starts.items())])
+        for sala, starts in by_sala.items()
+    ]
+    return sorted(salas, key=lambda s: (s.first_start, s.sala or ""))
+
+
+def _show_url(booking_url: str | None, source_url: str | None, cinema_url: str) -> str:
+    return booking_url or source_url or cinema_url
 
 
 @dataclass
@@ -141,19 +165,21 @@ def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]
         return []
     day = programme_day(now)
     rows = (
-        db.query(Showtime.film_id, Cinema.name, Showtime.sala, Showtime.date, Showtime.time)
+        db.query(
+            Showtime.film_id, Cinema.name, Cinema.slug, Cinema.url, Showtime.sala, Showtime.date, Showtime.time,
+            Showtime.booking_url, Showtime.source_url,
+        )
         .join(Cinema, Cinema.id == Showtime.cinema_id)
         .filter(Showtime.film_id.in_(cards), Showtime.date >= day)
         .all()
     )
 
-    today: dict[int, dict[str, dict[str | None, set[datetime]]]] = {}
+    today: dict[int, dict[tuple[str, str], dict[str | None, dict[datetime, str]]]] = {}
     first_by_cinema: dict[int, dict[str, date]] = {}
-    for film_id, cinema_name, sala, show_day, at in rows:
+    for film_id, cinema_name, slug, cinema_url, sala, show_day, at, booking_url, source_url in rows:
         if show_day == day and show_datetime(show_day, at) >= now:
-            today.setdefault(film_id, {}).setdefault(cinema_name, {}).setdefault(sala, set()).add(
-                show_datetime(show_day, at)
-            )
+            starts = today.setdefault(film_id, {}).setdefault((cinema_name, slug), {}).setdefault(sala, {})
+            starts[show_datetime(show_day, at)] = _show_url(booking_url, source_url, cinema_url)
         if show_day > day or show_datetime(show_day, at) >= now:
             firsts = first_by_cinema.setdefault(film_id, {})
             if cinema_name not in firsts or show_day < firsts[cinema_name]:
@@ -170,11 +196,9 @@ def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]
             announced[film_id][cinema_name].append(release)
 
     for film_id, card in cards.items():
-        for cinema_name, by_sala in today.get(film_id, {}).items():
-            salas = [SalaShows(sala=s, starts=sorted(starts)) for s, starts in by_sala.items()]
-            salas.sort(key=lambda s: (s.starts[0], s.sala or ""))
-            card.today.append(CinemaToday(cinema=cinema_name, salas=salas))
-        card.today.sort(key=lambda c: (c.salas[0].starts[0], c.cinema))
+        for (cinema_name, slug), by_sala in today.get(film_id, {}).items():
+            card.today.append(CinemaToday(cinema=cinema_name, slug=slug, salas=_group_by_sala(by_sala)))
+        card.today.sort(key=lambda c: (c.salas[0].first_start, c.cinema))
 
         shows = first_by_cinema.get(film_id, {})
         card.has_shows = bool(shows)
@@ -222,8 +246,33 @@ def _nav_counts(db: Session) -> dict[str, int]:
     }
 
 
+@dataclass
+class CinemaMenuItem:
+    slug: str
+    name: str
+    films_today: int  # films with shows still to come today
+
+
+def _cinema_menu(db: Session, now: datetime) -> list[CinemaMenuItem]:
+    """The cinemas of the left menu, with how many films they still show today."""
+    day = programme_day(now)
+    films_today: dict[int, set[int]] = {}
+    for cinema_id, film_id, show_day, at in db.query(
+        Showtime.cinema_id, Showtime.film_id, Showtime.date, Showtime.time
+    ).filter(Showtime.date == day):
+        if show_datetime(show_day, at) >= now:
+            films_today.setdefault(cinema_id, set()).add(film_id)
+    return [
+        CinemaMenuItem(slug=c.slug, name=c.name, films_today=len(films_today.get(c.id, ())))
+        for c in db.query(Cinema).order_by(Cinema.name)
+    ]
+
+
 def _render(request: Request, db: Session, name: str, active: str, **context) -> HTMLResponse:
-    context.update(active=active, counts=_nav_counts(db), today=_now().date(), votes=VOTES)
+    now = _now()
+    context.update(
+        active=active, counts=_nav_counts(db), today=now.date(), votes=VOTES, cinema_menu=_cinema_menu(db, now)
+    )
     return templates.TemplateResponse(request, name, context)
 
 
@@ -278,6 +327,61 @@ def index(request: Request, voto: str | None = Query(None), db: Session = Depend
     for card in gone:
         card.exit_date = _exit_date(card.film)
     return _render(request, db, "index.html", "in_sala", cards=showing, gone=gone, voto=voto)
+
+
+@dataclass
+class CinemaDayFilm:
+    film: Film
+    salas: list[SalaShows]
+
+    @property
+    def title(self) -> str:
+        return self.film.tmdb_title if self.film.is_tmdb_confirmed and self.film.tmdb_title else self.film.raw_title
+
+
+@router.get("/cinema/{slug}", response_class=HTMLResponse)
+def cinema_page(request: Request, slug: str, giorno: str | None = Query(None), db: Session = Depends(get_db)):
+    """One cinema: the shows of a day (today by default) and the days it has programmed.
+
+    Only days the cinema's site lists appear in the calendar; today shows only what
+    has not started yet. Each time opens the cinema's page to buy the ticket.
+    """
+    cinema = db.query(Cinema).filter_by(slug=slug).first()
+    if cinema is None:
+        raise HTTPException(status_code=404, detail="Cinema non trovato")
+    now = _now()
+    first_day = programme_day(now)
+
+    by_day: dict[date, dict[int, dict[str | None, dict[datetime, str]]]] = {}
+    for show in db.query(Showtime).filter(Showtime.cinema_id == cinema.id, Showtime.date >= first_day):
+        start = show_datetime(show.date, show.time)
+        if show.date == first_day and start < now:
+            continue  # already started
+        starts = by_day.setdefault(show.date, {}).setdefault(show.film_id, {}).setdefault(show.sala, {})
+        starts[start] = _show_url(show.booking_url, show.source_url, cinema.url)
+
+    days = sorted(by_day)
+    try:
+        selected = date.fromisoformat(giorno) if giorno else None
+    except ValueError:
+        selected = None
+    if selected not in by_day:
+        selected = days[0] if days else None
+
+    films: list[CinemaDayFilm] = []
+    if selected is not None:
+        film_objs = {f.id: f for f in db.query(Film).filter(Film.id.in_(by_day[selected]))}
+        films = [
+            CinemaDayFilm(film=film_objs[film_id], salas=_group_by_sala(by_sala))
+            for film_id, by_sala in by_day[selected].items()
+            if film_id in film_objs
+        ]
+        films.sort(key=lambda f: (min(s.first_start for s in f.salas), f.title.lower()))
+
+    return _render(
+        request, db, "cinema.html", f"cinema:{slug}",
+        cinema=cinema, days=days, selected=selected, first_day=first_day, films=films,
+    )
 
 
 @router.get("/in-uscita", response_class=HTMLResponse)

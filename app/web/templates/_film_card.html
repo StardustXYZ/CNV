@@ -26,12 +26,9 @@
                 <p class="today-label">Oggi</p>
                 {% for c in card.today %}
                 <div class="today-cinema">
-                    <p class="cinema">{{ c.cinema }}</p>
+                    <p class="cinema"><a href="/cinema/{{ c.slug }}" title="Tutti gli spettacoli di questo cinema">{{ c.cinema }}</a></p>
                     {% for s in c.salas %}
-                    <p class="today-sala">
-                        <span class="sala">{{ s.sala or "Sala" }}</span>
-                        {% for start in s.starts %}<span class="show-time" data-show-at="{{ start.isoformat(timespec='minutes') }}">{{ start.strftime('%H:%M') }}</span>{% endfor %}
-                    </p>
+                    <p class="today-sala">{% include "_sala_shows.html" %}</p>
                     {% endfor %}
                 </div>
                 {% endfor %}

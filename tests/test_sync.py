@@ -929,3 +929,15 @@ async def test_protection_of_a_broken_cinema_ends_after_the_threshold(db):
     await _sync_day(db, date(2026, 10, 9), [], scraper_errors=broken)
     db.refresh(film)
     assert film.status == "uscito"  # 8 days: protection over, not seen since 1/10
+
+
+@pytest.mark.asyncio
+async def test_booking_link_is_saved_and_updated(db):
+    show = ShowtimeData("andromeda", "CLAYFACE", date(2026, 10, 22), time(21, 0), booking_url="https://x/1")
+    await _sync_day(db, date(2026, 10, 20), [show])
+    assert db.query(Showtime).one().booking_url == "https://x/1"
+
+    show.booking_url = "https://x/2"
+    await _sync_day(db, date(2026, 10, 21), [show])
+    db.expire_all()
+    assert db.query(Showtime).one().booking_url == "https://x/2"
