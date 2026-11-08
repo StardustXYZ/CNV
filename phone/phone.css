@@ -6,3 +6,14 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .backup-actions label.btn { cursor: pointer; }
 .backup-actions input[type="file"] { display: none; }
 .offline-note { color: var(--yellow); }
+
+/* Swipe between pages: the page follows the finger, then the new one slides in */
+body { overflow-x: hidden; }
+#app { transition: transform 0.15s ease-out; }
+#app.swipe-next { animation: cnv-from-right 0.2s ease-out; }
+#app.swipe-prev { animation: cnv-from-left 0.2s ease-out; }
+@keyframes cnv-from-right { from { transform: translateX(32px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes cnv-from-left { from { transform: translateX(-32px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    #app, #app.swipe-next, #app.swipe-prev { transition: none; animation: none; }
+}

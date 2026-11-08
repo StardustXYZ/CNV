@@ -20,6 +20,7 @@ let CINEMAS = new Map();
 let votes = knownVotes(load("cnv.votes", {}));  // film id -> "V" | "?"
 let exported = load("cnv.exported", {});  // film id -> date the CSV was imported on Letterboxd
 let shownPage = "";                       // HTML of the page on screen, for the minute refresh
+let swipeDirection = "";                  // "next" | "prev": slide-in of the page drawn after a swipe
 
 // ------------------------------------------------------------------ helpers
 
@@ -362,6 +363,12 @@ function render(periodic = false) {
     const app = document.getElementById("app");
     if (!periodic) {
         app.innerHTML = page;
+        if (swipeDirection) {
+            app.classList.remove("swipe-next", "swipe-prev");
+            void app.offsetWidth; // restart the animation
+            app.classList.add(`swipe-${swipeDirection}`);
+            swipeDirection = "";
+        }
     } else if (path !== "/voti" && page !== shownPage) {
         const open = [...app.querySelectorAll("details[data-key][open]")].map((d) => d.dataset.key);
         app.innerHTML = page;
@@ -463,6 +470,70 @@ document.addEventListener("change", (e) => {
 });
 
 window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
+
+// ------------------------------------------------------------------ swipe between pages
+
+const TABS = ["#/", "#/uscita", "#/watchlist", "#/voti"]; // same order as the menu
+const SWIPE_MIN = 70;   // px sideways to change page
+const SWIPE_EDGE = 24;  // touches starting this close to the screen edge are Android's "back" gesture
+let swipe = null;       // the touch in progress: {x, y, horizontal}
+
+/** Where a swipe leads (step +1 = next, -1 = previous): the next menu page, or the next day on a cinema page. */
+function swipeTarget(step) {
+    const { path, params } = route();
+    if (path.startsWith("/cinema/")) {
+        const slug = decodeURIComponent(path.slice("/cinema/".length));
+        const days = [...(buildContext(new Date()).byCinemaDay.get(slug) || new Map()).keys()].sort();
+        const current = days.includes(params.get("giorno")) ? params.get("giorno") : days[0];
+        const day = days[days.indexOf(current) + step];
+        return day ? `#/cinema/${slug}?giorno=${day}` : null;
+    }
+    const index = TABS.indexOf(`#${path}`);
+    return index === -1 ? null : TABS[index + step] || null;
+}
+
+function endSwipe() {
+    swipe = null;
+    const app = document.getElementById("app");
+    app.style.transition = "";
+    app.style.transform = "";
+}
+
+document.addEventListener("touchstart", (e) => {
+    swipe = null;
+    if (!DATA || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (t.clientX < SWIPE_EDGE || t.clientX > window.innerWidth - SWIPE_EDGE) return;
+    if (e.target.closest(".calendar, .chips, .nav-links, .cinema-menu, input")) return; // they scroll or open by themselves
+    swipe = { x: t.clientX, y: t.clientY, horizontal: null };
+}, { passive: true });
+
+document.addEventListener("touchmove", (e) => {
+    if (!swipe) return;
+    const dx = e.touches[0].clientX - swipe.x;
+    const dy = e.touches[0].clientY - swipe.y;
+    // Decide once, after a few px: sideways = swipe, otherwise the page is just scrolling
+    if (swipe.horizontal === null && Math.hypot(dx, dy) > 12) swipe.horizontal = Math.abs(dx) > Math.abs(dy) * 1.5;
+    if (swipe.horizontal) {
+        const app = document.getElementById("app");
+        app.style.transition = "none";
+        app.style.transform = `translateX(${dx / 4}px)`; // the page follows the finger a little
+    }
+}, { passive: true });
+
+document.addEventListener("touchend", (e) => {
+    if (!swipe) return;
+    const dx = e.changedTouches[0].clientX - swipe.x;
+    const horizontal = swipe.horizontal;
+    endSwipe();
+    if (!horizontal || Math.abs(dx) < SWIPE_MIN) return;
+    const step = dx < 0 ? 1 : -1; // finger to the left: next page
+    const target = swipeTarget(step);
+    if (!target) return;
+    swipeDirection = step > 0 ? "next" : "prev";
+    location.hash = target;
+});
+document.addEventListener("touchcancel", endSwipe);
 setInterval(() => render(true), 60 * 1000); // started shows disappear while the app stays open
 
 // ------------------------------------------------------------------ start
