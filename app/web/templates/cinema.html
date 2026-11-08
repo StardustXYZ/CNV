@@ -17,6 +17,10 @@
     {% endfor %}
 </nav>
 
+{% if today_over %}
+<p class="notice next-day-notice">Oggi non ci sono altri spettacoli: ecco quelli di {{ selected | giorno(first_day) }}.</p>
+{% endif %}
+
 <div class="day-films">
     {% for item in films %}
     {% set film = item.film %}

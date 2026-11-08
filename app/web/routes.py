@@ -142,7 +142,10 @@ class CinemaRelease:
 @dataclass
 class FilmCard:
     film: Film
-    today: list[CinemaToday] = field(default_factory=list)  # remaining shows of the programme day
+    # Next shows: the rest of today, or when today is over the next day with shows
+    next_shows: list[CinemaToday] = field(default_factory=list)
+    next_day: date | None = None  # day of next_shows
+    next_is_today: bool = False  # next_shows are today's (programme day), not a later day
     cinemas: list[CinemaRelease] = field(default_factory=list)  # cinemas with upcoming shows or announcements
     first_date: date | None = None  # first known date anywhere
     has_shows: bool = False  # has screenings that have not started yet
@@ -159,7 +162,11 @@ class FilmCard:
 
 
 def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]:
-    """Attach to each film its remaining shows today (by cinema and sala) and its cinemas."""
+    """Attach to each film its next shows (by cinema and sala) and its cinemas.
+
+    The next shows are the ones still to come today; when today is over (or the film
+    is not on today) they are the ones of the next day with shows.
+    """
     cards = {f.id: FilmCard(film=f) for f in films}
     if not cards:
         return []
@@ -174,16 +181,20 @@ def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]
         .all()
     )
 
-    today: dict[int, dict[tuple[str, str], dict[str | None, dict[datetime, str]]]] = {}
+    # film -> day -> (cinema, slug) -> sala -> {start: url}, only shows not started yet
+    upcoming: dict[int, dict[date, dict[tuple[str, str], dict[str | None, dict[datetime, str]]]]] = {}
     first_by_cinema: dict[int, dict[str, date]] = {}
     for film_id, cinema_name, slug, cinema_url, sala, show_day, at, booking_url, source_url in rows:
-        if show_day == day and show_datetime(show_day, at) >= now:
-            starts = today.setdefault(film_id, {}).setdefault((cinema_name, slug), {}).setdefault(sala, {})
-            starts[show_datetime(show_day, at)] = _show_url(booking_url, source_url, cinema_url)
-        if show_day > day or show_datetime(show_day, at) >= now:
-            firsts = first_by_cinema.setdefault(film_id, {})
-            if cinema_name not in firsts or show_day < firsts[cinema_name]:
-                firsts[cinema_name] = show_day
+        start = show_datetime(show_day, at)
+        if show_day == day and start < now:
+            continue  # already started
+        starts = (
+            upcoming.setdefault(film_id, {}).setdefault(show_day, {}).setdefault((cinema_name, slug), {}).setdefault(sala, {})
+        )
+        starts[start] = _show_url(booking_url, source_url, cinema_url)
+        firsts = first_by_cinema.setdefault(film_id, {})
+        if cinema_name not in firsts or show_day < firsts[cinema_name]:
+            firsts[cinema_name] = show_day
 
     announced: dict[int, dict[str, list[date]]] = {}
     for film_id, cinema_name, release in (
@@ -196,9 +207,13 @@ def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]
             announced[film_id][cinema_name].append(release)
 
     for film_id, card in cards.items():
-        for (cinema_name, slug), by_sala in today.get(film_id, {}).items():
-            card.today.append(CinemaToday(cinema=cinema_name, slug=slug, salas=_group_by_sala(by_sala)))
-        card.today.sort(key=lambda c: (c.salas[0].first_start, c.cinema))
+        by_day = upcoming.get(film_id, {})
+        if by_day:
+            card.next_day = min(by_day)
+            card.next_is_today = card.next_day == day
+            for (cinema_name, slug), by_sala in by_day[card.next_day].items():
+                card.next_shows.append(CinemaToday(cinema=cinema_name, slug=slug, salas=_group_by_sala(by_sala)))
+            card.next_shows.sort(key=lambda c: (c.salas[0].first_start, c.cinema))
 
         shows = first_by_cinema.get(film_id, {})
         card.has_shows = bool(shows)
@@ -271,7 +286,8 @@ def _cinema_menu(db: Session, now: datetime) -> list[CinemaMenuItem]:
 def _render(request: Request, db: Session, name: str, active: str, **context) -> HTMLResponse:
     now = _now()
     context.update(
-        active=active, counts=_nav_counts(db), today=now.date(), votes=VOTES, cinema_menu=_cinema_menu(db, now)
+        active=active, counts=_nav_counts(db), today=now.date(), votes=VOTES, cinema_menu=_cinema_menu(db, now),
+        programme_day=programme_day(now),
     )
     return templates.TemplateResponse(request, name, context)
 
@@ -321,8 +337,8 @@ def index(request: Request, voto: str | None = Query(None), db: Session = Depend
     else:
         voto = None
     cards = _film_cards(db, query.all(), _now())
-    # Films still showing today first, then alphabetical
-    showing = sorted((c for c in cards if c.has_shows), key=lambda c: (not c.today, c.title.lower()))
+    # Films still showing today first, then by their next day, then alphabetical
+    showing = sorted((c for c in cards if c.has_shows), key=lambda c: (c.next_day, c.title.lower()))
     gone = sorted((c for c in cards if not c.has_shows), key=lambda c: c.title.lower())
     for card in gone:
         card.exit_date = _exit_date(card.film)
@@ -367,6 +383,10 @@ def cinema_page(request: Request, slug: str, giorno: str | None = Query(None), d
         selected = None
     if selected not in by_day:
         selected = days[0] if days else None
+        # Opened without choosing a day and nothing left today: say these are a later day's
+        today_over = selected is not None and selected != first_day
+    else:
+        today_over = False
 
     films: list[CinemaDayFilm] = []
     if selected is not None:
@@ -380,7 +400,7 @@ def cinema_page(request: Request, slug: str, giorno: str | None = Query(None), d
 
     return _render(
         request, db, "cinema.html", f"cinema:{slug}",
-        cinema=cinema, days=days, selected=selected, first_day=first_day, films=films,
+        cinema=cinema, days=days, selected=selected, first_day=first_day, films=films, today_over=today_over,
     )
 
 
