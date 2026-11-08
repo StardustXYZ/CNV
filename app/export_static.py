@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import ROOT_DIR, settings
 from app.db.engine import SessionLocal, init_db
 from app.db.models import Cinema, ComingSoon, Film, FilmMerge, Showtime
+from app.services.schedule import SHOW_EXTRA_MINUTES
 
 PHONE_DIR = ROOT_DIR / "phone"
 STYLE_CSS = ROOT_DIR / "app" / "web" / "static" / "style.css"
@@ -58,6 +59,8 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
             "tmdb": f.tmdb_id if f.is_tmdb_confirmed else None,
             "poster": f.poster_url if f.is_tmdb_confirmed else None,
             "year": f.year if f.is_tmdb_confirmed else None,
+            "genre": f.genre if f.has_tmdb_details else None,
+            "runtime": f.runtime if f.has_tmdb_details else None,
             "status": f.status,
             "event": bool(f.is_event),
             "last_seen": f.last_seen_date.isoformat() if f.last_seen_date else None,
@@ -78,6 +81,7 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         "settings": {
             "days_to_uscito": settings.SYNC_DAYS_TO_USCITO,
             "days_to_uscito_evento": settings.SYNC_DAYS_TO_USCITO_EVENTO,
+            "show_extra_minutes": SHOW_EXTRA_MINUTES,
         },
         "cinemas": [{"slug": c.slug, "name": c.name, "url": c.url} for c in cinemas],
         "films": films,

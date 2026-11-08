@@ -311,3 +311,92 @@ def test_merge_is_recorded_and_ids_are_not_reused(db):
     # The highest id was deleted: a new film must not take it, or a phone vote would move to it
     new, created = _get_or_create_film(db, "QUARTO", TODAY)
     assert created and new.id == third.id + 1
+
+
+# ------------------------------------------------------------------ runtime and genre
+
+
+def test_tmdb_details_have_runtime_and_genres_search_results_do_not():
+    details = TmdbMovie.from_api({"id": 1, "title": "Mammina", "runtime": 92,
+                                  "genres": [{"id": 27, "name": "Horror"}, {"id": 53, "name": "Thriller"}]})
+    assert (details.runtime, details.main_genre, details.has_details) == (92, "Horror", True)
+    hit = TmdbMovie.from_api({"id": 1, "title": "Mammina", "genre_ids": [27]})
+    assert (hit.runtime, hit.main_genre, hit.has_details) == (None, None, False)
+    assert TmdbMovie.from_api({"id": 2, "title": "X", "runtime": 0, "genres": []}).runtime is None
+
+
+class FakeDetails:
+    def __init__(self, movies: dict[int, TmdbMovie | None], fail_on: int | None = None) -> None:
+        self.movies = movies
+        self.fail_on = fail_on
+        self.calls: list[int] = []
+
+    async def get_movie(self, tmdb_id: int) -> TmdbMovie | None:
+        self.calls.append(tmdb_id)
+        if tmdb_id == self.fail_on:
+            raise httpx.ConnectError("offline")
+        return self.movies.get(tmdb_id)
+
+
+def _details(tmdb_id: int, runtime: int, genre: str) -> TmdbMovie:
+    return TmdbMovie(tmdb_id, "x", "x", runtime=runtime, genres=(genre,), has_details=True)
+
+
+@pytest.mark.asyncio
+async def test_fill_film_details(db):
+    from app.services.matching import MatchReport, fill_film_details
+
+    def film(title, tmdb_id, status="abbinato", programme="in_sala", details_for=None):
+        f = Film(raw_title=title, normalized_title=title.lower(), tmdb_id=tmdb_id, tmdb_match_status=status,
+                 status=programme, details_tmdb_id=details_for)
+        db.add(f)
+        db.flush()
+        return f
+
+    sure = film("Sicuro", 10)
+    changed = film("Cambiato", 11, status="manuale", details_for=99)  # match changed: fetch again
+    done = film("Fatto", 12, details_for=12)
+    doubt = film("Incerto", 13, status="da_verificare")
+    gone = film("Uscito", 14, programme="uscito")
+    deleted = film("Sparito da TMDB", 15)
+    db.commit()
+    tmdb = FakeDetails({10: _details(10, 115, "Commedia"), 11: _details(11, 90, "Horror")})
+
+    report = MatchReport()
+    assert await fill_film_details(db, tmdb, report) == 2
+    assert tmdb.calls == [10, 11, 15]
+    assert (sure.runtime, sure.genre, sure.details_tmdb_id) == (115, "Commedia", 10)
+    assert (changed.runtime, changed.genre) == (90, "Horror")
+    assert deleted.details_tmdb_id == 15 and deleted.runtime is None  # not asked again
+    assert done.runtime is None and doubt.details_tmdb_id is None and gone.details_tmdb_id is None
+    assert sure.has_tmdb_details and not doubt.has_tmdb_details
+
+    # Next time nothing is left to fetch
+    tmdb.calls.clear()
+    assert await fill_film_details(db, tmdb) == 0 and tmdb.calls == []
+
+
+@pytest.mark.asyncio
+async def test_fill_film_details_stops_when_tmdb_does_not_answer(db):
+    from app.services.matching import MatchReport, fill_film_details
+
+    for tmdb_id in (20, 21):
+        db.add(Film(raw_title=f"F{tmdb_id}", normalized_title=f"f{tmdb_id}", tmdb_id=tmdb_id,
+                    tmdb_match_status="abbinato", status="in_sala"))
+    db.commit()
+    tmdb = FakeDetails({21: _details(21, 100, "Dramma")}, fail_on=20)
+    report = MatchReport()
+
+    assert await fill_film_details(db, tmdb, report) == 0
+    assert tmdb.calls == [20]  # the next sync tries again
+    assert report.errors and "F20" in report.errors[0]
+
+
+def test_manual_match_from_the_details_needs_no_later_fetch(db):
+    from app.services.matching import confirm_match
+
+    f = Film(raw_title="Mammina", normalized_title="mammina", status="in_sala")
+    db.add(f)
+    db.flush()
+    confirm_match(db, f, _details(1400837, 92, "Horror"))
+    assert f.has_tmdb_details and (f.runtime, f.genre) == (92, "Horror")

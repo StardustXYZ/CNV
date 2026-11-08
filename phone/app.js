@@ -36,6 +36,16 @@ const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 function parseDate(iso) { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); }
 function addDays(iso, n) { const d = parseDate(iso); d.setDate(d.getDate() + n); return isoDate(d); }
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+/** e.g. "1h 55m", "2h", "45m". */
+function formatRuntime(minutes) {
+    const h = Math.floor(minutes / 60), m = minutes % 60;
+    return !h ? `${m}m` : m ? `${h}h ${pad(m)}m` : `${h}h`;
+}
+/** Estimated end of a show: start + runtime + ads and trailers (null without runtime). */
+function showEnd(start, film) {
+    if (!film || !film.runtime) return null;
+    return new Date(start.getTime() + (film.runtime + (DATA.settings.show_extra_minutes ?? 10)) * 60000);
+}
 
 /** The cinema day in progress: until 06:00 it is still the previous evening's programme. */
 function programmeDay(now) {
@@ -73,7 +83,7 @@ function buildContext(now) {
         if (s.d < day) continue;
         const start = showStart(s.d, s.t);
         if (s.d === day && start < now) continue; // already started
-        const show = { start, url: s.u || (CINEMAS.get(s.c) || {}).url || "#" };
+        const show = { start, end: showEnd(start, FILMS.get(s.f)), url: s.u || (CINEMAS.get(s.c) || {}).url || "#" };
         push(nested(upcoming, s.f, s.d, s.c), s.s, show);
         const firsts = nested(firstByCinema, s.f);
         if (!firsts.has(s.c) || s.d < firsts.get(s.c)) firsts.set(s.c, s.d);
@@ -140,7 +150,7 @@ function voteBox(film) {
 }
 function salaShows(s) {
     const times = s.shows.map((show) =>
-        `<a class="show-time" href="${esc(show.url)}" target="_blank" rel="noopener" title="Acquista sul sito del cinema">${hhmm(show.start)}</a>`
+        `<a class="show-time" href="${esc(show.url)}" target="_blank" rel="noopener" title="${show.end ? `Fine verso le ${hhmm(show.end)} · ` : ""}Acquista sul sito del cinema">${hhmm(show.start)}${show.end ? `<span class="show-end">→${hhmm(show.end)}</span>` : ""}</a>`
     ).join("");
     return `<span class="sala">${esc(s.sala || "Sala")}</span>${times}`;
 }
@@ -152,6 +162,8 @@ function poster(film, cls) {
 function meta(film) {
     return `<div class="meta">
         ${film.year ? `<span>${film.year}</span>` : ""}
+        ${film.genre ? `<span>${esc(film.genre)}</span>` : ""}
+        ${film.runtime ? `<span title="Durata del film">${formatRuntime(film.runtime)}</span>` : ""}
         ${film.event ? `<span class="tag">Evento</span>` : ""}
         ${film.tmdb ? `<a href="https://www.themoviedb.org/movie/${film.tmdb}" target="_blank" rel="noopener" class="ext-link">TMDB ↗</a>` : ""}
     </div>`;

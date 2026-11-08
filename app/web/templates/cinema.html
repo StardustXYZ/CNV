@@ -34,6 +34,8 @@
             <h3>{{ item.title }}</h3>
             <div class="meta">
                 {% if film.year and film.is_tmdb_confirmed %}<span>{{ film.year }}</span>{% endif %}
+                {% if film.has_tmdb_details and film.genre %}<span>{{ film.genre }}</span>{% endif %}
+                {% if film.has_tmdb_details and film.runtime %}<span title="Durata del film">{{ film.runtime | durata }}</span>{% endif %}
                 {% if film.is_event %}<span class="tag">Evento</span>{% endif %}
                 <a href="/film/{{ film.id }}/abbinamento" class="ext-link change-match">{% if film.is_tmdb_confirmed %}cambia{% else %}abbina{% endif %}</a>
             </div>

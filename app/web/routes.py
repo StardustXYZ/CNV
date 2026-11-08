@@ -22,7 +22,7 @@ from app.services import export as export_service
 from app.services.backup import list_backups
 from app.services.matching import STATUS_NOT_FOUND, STATUS_REVIEW, confirm_match, search_manual
 from app.services.runner import SyncAlreadyRunning, is_sync_running, run_full_sync
-from app.services.schedule import programme_day, show_datetime
+from app.services.schedule import programme_day, show_datetime, show_end
 from app.services.sync import is_event_film
 from app.services.tmdb import TmdbClient
 
@@ -55,6 +55,14 @@ def format_day(d: date, today: date | None = None) -> str:
     return f"{WEEKDAYS[d.weekday()]} {d.day}/{d.month}"
 
 
+def format_runtime(minutes: int) -> str:
+    """e.g. '1h 55m', '2h', '45m'."""
+    hours, rest = divmod(minutes, 60)
+    if not hours:
+        return f"{rest}m"
+    return f"{hours}h {rest:02d}m" if rest else f"{hours}h"
+
+
 def format_long_date(d: date, today: date | None = None) -> str:
     """e.g. '16 dicembre', with the year only when it is not the current one."""
     today = today or date.today()
@@ -78,6 +86,7 @@ def asset_version(name: str) -> int:
 
 templates.env.filters["giorno"] = format_day
 templates.env.filters["data_lunga"] = format_long_date
+templates.env.filters["durata"] = format_runtime
 templates.env.globals["asset_version"] = asset_version
 templates.env.filters["ora_locale"] = format_local_time
 
@@ -100,6 +109,7 @@ async def get_tmdb() -> AsyncIterator[TmdbClient | None]:
 class ShowLink:
     start: datetime
     url: str  # where to buy it: the screening's page, else the film's page on the cinema site
+    end: datetime | None = None  # estimated from the TMDB runtime
 
 
 @dataclass
@@ -119,10 +129,17 @@ class CinemaToday:
     salas: list[SalaShows] = field(default_factory=list)
 
 
-def _group_by_sala(by_sala: dict[str | None, dict[datetime, str]]) -> list[SalaShows]:
-    """{sala: {start: url}} -> salas sorted by their first show, shows sorted by time."""
+def _group_by_sala(by_sala: dict[str | None, dict[datetime, str]], film: Film | None = None) -> list[SalaShows]:
+    """{sala: {start: url}} -> salas sorted by their first show, shows sorted by time.
+
+    With the ``film`` and its TMDB runtime each show also gets its estimated end.
+    """
+    runtime = film.runtime if film is not None and film.has_tmdb_details else None
     salas = [
-        SalaShows(sala=sala, shows=[ShowLink(start=start, url=url) for start, url in sorted(starts.items())])
+        SalaShows(
+            sala=sala,
+            shows=[ShowLink(start=start, url=url, end=show_end(start, runtime)) for start, url in sorted(starts.items())],
+        )
         for sala, starts in by_sala.items()
     ]
     return sorted(salas, key=lambda s: (s.first_start, s.sala or ""))
@@ -212,7 +229,7 @@ def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]
             card.next_day = min(by_day)
             card.next_is_today = card.next_day == day
             for (cinema_name, slug), by_sala in by_day[card.next_day].items():
-                card.next_shows.append(CinemaToday(cinema=cinema_name, slug=slug, salas=_group_by_sala(by_sala)))
+                card.next_shows.append(CinemaToday(cinema=cinema_name, slug=slug, salas=_group_by_sala(by_sala, card.film)))
             card.next_shows.sort(key=lambda c: (c.salas[0].first_start, c.cinema))
 
         shows = first_by_cinema.get(film_id, {})
@@ -392,7 +409,7 @@ def cinema_page(request: Request, slug: str, giorno: str | None = Query(None), d
     if selected is not None:
         film_objs = {f.id: f for f in db.query(Film).filter(Film.id.in_(by_day[selected]))}
         films = [
-            CinemaDayFilm(film=film_objs[film_id], salas=_group_by_sala(by_sala))
+            CinemaDayFilm(film=film_objs[film_id], salas=_group_by_sala(by_sala, film_objs[film_id]))
             for film_id, by_sala in by_day[selected].items()
             if film_id in film_objs
         ]

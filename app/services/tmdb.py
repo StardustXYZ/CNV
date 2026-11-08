@@ -24,6 +24,13 @@ class TmdbMovie:
     release_date: date | None = None
     popularity: float = 0.0
     poster_path: str | None = None
+    runtime: int | None = None  # minutes; only in the movie details, not in search results
+    genres: tuple[str, ...] = ()  # Italian names, main genre first; only in the movie details
+    has_details: bool = False  # built from the movie details (runtime and genres are known)
+
+    @property
+    def main_genre(self) -> str | None:
+        return self.genres[0] if self.genres else None
 
     @property
     def year(self) -> int | None:
@@ -48,6 +55,9 @@ class TmdbMovie:
             release_date=release,
             popularity=float(hit.get("popularity") or 0.0),
             poster_path=hit.get("poster_path"),
+            runtime=int(hit["runtime"]) if hit.get("runtime") else None,
+            genres=tuple(g["name"] for g in hit.get("genres") or [] if g.get("name")),
+            has_details="genres" in hit,
         )
 
 
@@ -55,6 +65,12 @@ class MovieSearcher(Protocol):
     """Anything that can search movies by title (the real client or a test fake)."""
 
     async def search_movies(self, query: str, year: int | None = None) -> list[TmdbMovie]: ...
+
+
+class MovieDetails(Protocol):
+    """Anything that can fetch one movie with its details (the real client or a test fake)."""
+
+    async def get_movie(self, tmdb_id: int) -> TmdbMovie | None: ...
 
 
 class TmdbClient:
@@ -91,7 +107,7 @@ class TmdbClient:
         return [TmdbMovie.from_api(hit) for hit in resp.json().get("results", [])]
 
     async def get_movie(self, tmdb_id: int) -> TmdbMovie | None:
-        """Fetch one movie by TMDB id (None if it does not exist)."""
+        """Fetch one movie by TMDB id, with runtime and genres (None if it does not exist)."""
         resp = await self._client.get(f"/movie/{tmdb_id}", params={"api_key": self.api_key, "language": "it-IT"})
         if resp.status_code == 404:
             return None

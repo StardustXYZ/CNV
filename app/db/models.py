@@ -57,6 +57,9 @@ class Film(Base):
     exported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_event: Mapped[bool] = mapped_column(Boolean, default=False)
     consecutive_missing_days: Mapped[int] = mapped_column(Integer, default=0)
+    runtime: Mapped[int | None] = mapped_column(Integer, nullable=True)  # minutes, from the TMDB details
+    genre: Mapped[str | None] = mapped_column(String(50), nullable=True)  # main genre, from the TMDB details
+    details_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # TMDB film runtime/genre belong to
 
     showtimes: Mapped[list[Showtime]] = relationship(back_populates="film", cascade="all, delete-orphan")
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")
@@ -66,6 +69,11 @@ class Film(Base):
     @property
     def is_tmdb_confirmed(self) -> bool:
         return self.tmdb_id is not None and self.tmdb_match_status in ("abbinato", "manuale")
+
+    @property
+    def has_tmdb_details(self) -> bool:
+        """Runtime and genre are known and belong to the confirmed TMDB match."""
+        return self.is_tmdb_confirmed and self.details_tmdb_id == self.tmdb_id
 
     def __init__(self, **kwargs):
         # Support Italian aliases in constructor

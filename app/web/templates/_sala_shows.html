@@ -1,3 +1,4 @@
-{# One sala and its show times; each time opens the cinema's page to buy it. Expects `s` (SalaShows). #}
+{# One sala and its show times, with the estimated end when the runtime is known;
+   each time opens the cinema's page to buy it. Expects `s` (SalaShows). #}
 <span class="sala">{{ s.sala or "Sala" }}</span>
-{% for show in s.shows %}<a class="show-time" href="{{ show.url }}" target="_blank" rel="noopener" title="Acquista sul sito del cinema" data-show-at="{{ show.start.isoformat(timespec='minutes') }}">{{ show.start.strftime('%H:%M') }}</a>{% endfor %}
+{% for show in s.shows %}<a class="show-time" href="{{ show.url }}" target="_blank" rel="noopener" title="{% if show.end %}Fine verso le {{ show.end.strftime('%H:%M') }} · {% endif %}Acquista sul sito del cinema" data-show-at="{{ show.start.isoformat(timespec='minutes') }}">{{ show.start.strftime('%H:%M') }}{% if show.end %}<span class="show-end">→{{ show.end.strftime('%H:%M') }}</span>{% endif %}</a>{% endfor %}

@@ -48,7 +48,7 @@ def test_build_data(db):
     # An uncertain TMDB match is not shown as if it were sure
     assert films[doubt.id]["title"] == "FILM INCERTO"
     assert films[doubt.id]["tmdb"] is None and films[doubt.id]["poster"] is None
-    assert data["settings"] == {"days_to_uscito": 7, "days_to_uscito_evento": 3}
+    assert data["settings"] == {"days_to_uscito": 7, "days_to_uscito_evento": 3, "show_extra_minutes": 10}
     assert "vote" not in json.dumps(data)  # votes stay on the phone
 
 
@@ -76,3 +76,14 @@ def test_build_data_lists_merged_films(db):
     db.commit()
 
     assert build_data(db, today=TODAY, now=NOW)["merged"] == {"50": clay.id}
+
+
+def test_build_data_runtime_and_genre_only_for_the_confirmed_match(db):
+    clay, doubt = _seed(db)
+    clay.runtime, clay.genre, clay.details_tmdb_id = 115, "Horror", clay.tmdb_id
+    doubt.runtime, doubt.genre, doubt.details_tmdb_id = 90, "Commedia", doubt.tmdb_id  # uncertain match
+    db.commit()
+
+    films = {f["id"]: f for f in build_data(db, today=TODAY, now=NOW)["films"]}
+    assert (films[clay.id]["runtime"], films[clay.id]["genre"]) == (115, "Horror")
+    assert (films[doubt.id]["runtime"], films[doubt.id]["genre"]) == (None, None)
