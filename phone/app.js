@@ -63,10 +63,10 @@ function longDate(iso, today) {
 
 // ------------------------------------------------------------------ derived data
 
-/** Remaining shows of today and upcoming shows, grouped as the pages need them. */
+/** Shows not started yet, grouped as the pages need them. */
 function buildContext(now) {
     const day = programmeDay(now);
-    const today = new Map();          // film -> cinema slug -> sala -> [{start, url}]
+    const upcoming = new Map();       // film -> day -> cinema slug -> sala -> [{start, url}]
     const firstByCinema = new Map();  // film -> cinema slug -> first upcoming day
     const byCinemaDay = new Map();    // cinema slug -> day -> film -> sala -> [{start, url}]
     for (const s of DATA.shows) {
@@ -74,7 +74,7 @@ function buildContext(now) {
         const start = showStart(s.d, s.t);
         if (s.d === day && start < now) continue; // already started
         const show = { start, url: s.u || (CINEMAS.get(s.c) || {}).url || "#" };
-        if (s.d === day) push(nested(today, s.f, s.c), s.s, show);
+        push(nested(upcoming, s.f, s.d, s.c), s.s, show);
         const firsts = nested(firstByCinema, s.f);
         if (!firsts.has(s.c) || s.d < firsts.get(s.c)) firsts.set(s.c, s.d);
         push(nested(byCinemaDay, s.c, s.d, s.f), s.s, show);
@@ -85,7 +85,13 @@ function buildContext(now) {
         if (c.d) list.push(c.d);
         nested(announced, c.f).set(c.c, list);
     }
-    return { now, day, today, firstByCinema, byCinemaDay, announced };
+    // Next shows of each film: the rest of today, or the next day with shows when today is over
+    const next = new Map();           // film -> {day, cinemas: cinema slug -> sala -> [{start, url}]}
+    for (const [film, byDay] of upcoming) {
+        const first = [...byDay.keys()].sort()[0];
+        next.set(film, { day: first, cinemas: byDay.get(first) });
+    }
+    return { now, day, next, firstByCinema, byCinemaDay, announced };
 }
 function nested(map, ...keys) {
     let m = map;
@@ -153,12 +159,15 @@ function meta(film) {
 function filmCard(film, ctx, mode) {
     let body = "";
     if (mode === "oggi") {
-        const today = ctx.today.get(film.id);
-        if (today && today.size) {
-            const cinemas = [...today.entries()]
+        const next = ctx.next.get(film.id);
+        if (next) {
+            const cinemas = [...next.cinemas.entries()]
                 .map(([slug, bySala]) => ({ slug, salas: salas(bySala) }))
                 .sort((a, b) => a.salas[0].shows[0].start - b.salas[0].shows[0].start);
-            body = `<div class="today"><p class="today-label">Oggi</p>${cinemas.map((c) => `
+            const label = next.day === ctx.day
+                ? `<p class="today-label">Oggi</p>`
+                : `<p class="today-label next-day" title="Oggi non ci sono altri spettacoli">Prossimi spettacoli: ${formatDay(next.day, ctx.day)}</p>`;
+            body = `<div class="today">${label}${cinemas.map((c) => `
                 <div class="today-cinema">
                     <p class="cinema"><a href="#/cinema/${esc(c.slug)}">${esc(cinemaName(c.slug))}</a></p>
                     ${c.salas.map((s) => `<p class="today-sala">${salaShows(s)}</p>`).join("")}
@@ -192,7 +201,7 @@ function pageInSala(ctx, params) {
     if (voto === "nessuno") films = films.filter((f) => !votes[f.id]);
     else if (VOTES.includes(voto)) films = films.filter((f) => votes[f.id] === voto);
     const showing = films.filter((f) => hasShows(f, ctx))
-        .sort((a, b) => !ctx.today.has(a.id) - !ctx.today.has(b.id) || a.title.localeCompare(b.title));
+        .sort((a, b) => ctx.next.get(a.id).day.localeCompare(ctx.next.get(b.id).day) || a.title.localeCompare(b.title));
     const gone = films.filter((f) => !hasShows(f, ctx)).sort((a, b) => a.title.localeCompare(b.title));
 
     const chips = filters.map(([value, label]) =>
@@ -236,7 +245,11 @@ function pageCinema(ctx, slug, params) {
     const byDay = ctx.byCinemaDay.get(slug) || new Map();
     const days = [...byDay.keys()].sort();
     let selected = params.get("giorno");
-    if (!byDay.has(selected)) selected = days[0] || null;
+    let todayOver = false; // opened without choosing a day and nothing left today
+    if (!byDay.has(selected)) {
+        selected = days[0] || null;
+        todayOver = selected !== null && selected !== ctx.day;
+    }
 
     let html = `<header class="page-header"><h1>${esc(cinema.name)}</h1>
         <a href="${esc(cinema.url)}" target="_blank" rel="noopener" class="btn">Sito del cinema ↗</a>
@@ -247,6 +260,9 @@ function pageCinema(ctx, slug, params) {
     }
     html += `<nav class="calendar">${days.map((d) =>
         `<a href="#/cinema/${esc(slug)}?giorno=${d}" class="day-chip${d === selected ? " active" : ""}">${d === ctx.day ? "Oggi" : capitalize(formatDay(d, ctx.day))}</a>`).join("")}</nav>`;
+    if (todayOver) {
+        html += `<p class="notice next-day-notice">Oggi non ci sono altri spettacoli: ecco quelli di ${formatDay(selected, ctx.day)}.</p>`;
+    }
     const films = [...byDay.get(selected).entries()]
         .map(([id, bySala]) => ({ film: FILMS.get(id), salas: salas(bySala) }))
         .filter((x) => x.film)

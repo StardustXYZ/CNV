@@ -1,5 +1,6 @@
 {# One film: poster, title, year, screenings and vote buttons.
-   Expects `card` and `mode`: "oggi" (remaining shows today by cinema and sala),
+   Expects `card` and `mode`: "oggi" (remaining shows today by cinema and sala, or the
+   next day's when today is over),
    "uscita" (release date per cinema) or nothing (no screenings). #}
 {% set film = card.film %}
 <article class="film-card">
@@ -21,10 +22,14 @@
         </div>
 
         {% if mode == "oggi" %}
-            {% if card.today %}
+            {% if card.next_shows %}
             <div class="today">
+                {% if card.next_is_today %}
                 <p class="today-label">Oggi</p>
-                {% for c in card.today %}
+                {% else %}
+                <p class="today-label next-day" title="Oggi non ci sono altri spettacoli">Prossimi spettacoli: {{ card.next_day | giorno(programme_day) }}</p>
+                {% endif %}
+                {% for c in card.next_shows %}
                 <div class="today-cinema">
                     <p class="cinema"><a href="/cinema/{{ c.slug }}" title="Tutti gli spettacoli di questo cinema">{{ c.cinema }}</a></p>
                     {% for s in c.salas %}

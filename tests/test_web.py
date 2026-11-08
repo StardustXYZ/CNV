@@ -257,7 +257,33 @@ def test_home_lists_films_still_showing_today_first(client, session, cinema):
 
     html = client.get("/").text
     assert html.index("Zzz stasera") < html.index("Aaa finito per oggi")
-    assert "Oggi non ci sono altri spettacoli." in html
+    # Nothing left today: tomorrow's shows instead, labelled as such
+    tomorrow = html[html.index("Aaa finito per oggi"):]
+    assert "Prossimi spettacoli: domani" in tomorrow
+    assert 'data-show-at="2026-10-18T21:00"' in tomorrow
+
+
+def test_home_next_shows_skip_days_without_shows(client, session, cinema):
+    film = add_film(session, "Clayface", "in_sala", [3], cinema)  # Tuesday only
+    add_show(session, film, cinema, TODAY, time(18, 0))  # started before 20:00
+    add_show(session, film, cinema, TODAY + timedelta(days=3), time(17, 0), "Sala 2")
+
+    html = client.get("/").text
+    assert "Prossimi spettacoli: mar 20/10" in html
+    assert [s.split('"')[0] for s in html.split('data-show-at="')[1:]] == ["2026-10-20T17:00", "2026-10-20T21:00"]
+
+
+def test_cinema_page_shows_the_next_day_when_today_is_over(client, session, cinema):
+    film = add_film(session, "Clayface", "in_sala", [], cinema)
+    add_show(session, film, cinema, TODAY, time(18, 0))  # started before 20:00
+    add_show(session, film, cinema, TODAY + timedelta(days=1), time(21, 0))
+
+    main = client.get("/cinema/andromeda").text.split("<main", 1)[1]
+    assert "Oggi non ci sono altri spettacoli: ecco quelli di domani." in main
+    assert 'data-show-at="2026-10-18T21:00"' in main
+    # A day chosen in the calendar is not announced as a fallback
+    chosen = client.get("/cinema/andromeda", params={"giorno": "2026-10-18"}).text
+    assert "ecco quelli di" not in chosen
 
 
 def test_coming_soon_lists_cinemas_with_their_dates(client, session, cinema):
