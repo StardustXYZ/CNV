@@ -44,7 +44,7 @@ def test_export_empty_db(db):
 def test_export_includes_left_films_marked_v_or_question(db):
     add(db, "Da Vedere", vote="V", tmdb_id=101)
     add(db, "Forse", vote="?", tmdb_id=102)
-    add(db, "No", vote="X", tmdb_id=103)
+    add(db, "Visto Altrove", vote=None, tmdb_id=103)
     add(db, "Senza Voto", vote=None, tmdb_id=104)
     add(db, "Ancora In Sala", status="in_sala", tmdb_id=105)
     add(db, "Prossimamente", status="in_uscita", tmdb_id=106)

@@ -51,6 +51,8 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN genre VARCHAR(50)"))
             if "details_tmdb_id" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN details_tmdb_id INTEGER"))
+            # The X vote ("non mi interessa") no longer exists: those films go back to "da votare"
+            conn.execute(text("UPDATE films SET vote = NULL WHERE vote = 'X'"))
 
         if "showtimes" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("showtimes")}

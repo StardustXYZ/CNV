@@ -5,7 +5,7 @@
 <header class="page-header">
     <h1>Film in sala</h1>
     <nav class="chips" aria-label="Filtra per voto">
-        {% set filters = [(None, "Tutti"), ("nessuno", "Da votare"), ("V", "V"), ("?", "?"), ("X", "X")] %}
+        {% set filters = [(None, "Tutti"), ("nessuno", "Da votare"), ("V", "V"), ("?", "?")] %}
         {% for value, label in filters %}
         <a href="/{% if value %}?voto={{ value | urlencode }}{% endif %}" class="chip{% if voto == value %} active{% endif %}">{{ label }}</a>
         {% endfor %}

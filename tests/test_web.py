@@ -125,7 +125,7 @@ def test_vote_toggle_and_filter(client, session, cinema):
     client.post(f"/film/{film.id}/vote", data={"v": "V"})
     session.expire_all()
     assert session.get(Film, film.id).vote is None
-    client.post(f"/film/{film.id}/vote", data={"v": "X"})
+    assert client.post(f"/film/{film.id}/vote", data={"v": "X"}).status_code == 422  # X no longer exists
     client.post(f"/film/{film.id}/vote", data={"v": ""})
     session.expire_all()
     assert session.get(Film, film.id).vote is None
@@ -357,7 +357,7 @@ def test_watchlist_export_flow(client, session, cinema):
     ready = add_film(session, "Frankie", "uscito", [], cinema, vote="V", tmdb_id=10,
                      tmdb_title="Frankie e le creature dimenticate", tmdb_match_status="abbinato", year=2026)
     add_film(session, "Incerto", "uscito", [], cinema, vote="?", tmdb_id=11, tmdb_match_status="da_verificare")
-    add_film(session, "Non mi va", "uscito", [], cinema, vote="X", tmdb_id=12, tmdb_match_status="abbinato")
+    add_film(session, "Non mi va", "uscito", [], cinema, vote=None, tmdb_id=12, tmdb_match_status="abbinato")
 
     page = client.get("/watchlist").text
     assert "Da esportare" in page and "Frankie e le creature dimenticate" in page

@@ -35,8 +35,8 @@ MONTHS = [
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
-VOTES = ("V", "?", "X")
-VOTE_FILTERS = {"V": "V", "?": "?", "X": "X", "nessuno": None}
+VOTES = ("V", "?")  # V: voglio vederlo, ?: indeciso
+VOTE_FILTERS = {"V": "V", "?": "?", "nessuno": None}
 REVIEW_STATUSES = (STATUS_REVIEW, STATUS_NOT_FOUND)
 
 
@@ -483,7 +483,7 @@ def status_page(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/film/{film_id}/vote", response_class=HTMLResponse)
 def vote_film(request: Request, film_id: int, v: str = Form(""), db: Session = Depends(get_db)):
-    """Save a vote (V / ? / X). Clicking the current vote again removes it. Returns an htmx partial."""
+    """Save a vote (V / ?). Clicking the current vote again removes it. Returns an htmx partial."""
     film = _get_film(db, film_id)
     if v not in (*VOTES, ""):
         raise HTTPException(status_code=422, detail="Voto non valido")

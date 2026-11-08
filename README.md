@@ -2,7 +2,7 @@
 
 Cinema tracker personale per **Cosenza / Rende**.
 
-CNV raccoglie ogni giorno le programmazioni dei cinema della zona e mostra in un'unica pagina cosa c'è in sala oggi (cinema, sala e orari) e cosa sta per uscire. Ogni film si vota con **V** (voglio vederlo), **?** (non so) o **X** (non mi interessa). Quando un film segnato V o ? esce da tutte le sale, finisce in una watchlist pronta da importare su **Letterboxd**.
+CNV raccoglie ogni giorno le programmazioni dei cinema della zona e mostra in un'unica pagina cosa c'è in sala oggi (cinema, sala e orari) e cosa sta per uscire. Ogni film si vota con **V** (voglio vederlo) o **?** (indeciso). Quando un film segnato V o ? esce da tutte le sale, finisce in una watchlist pronta da importare su **Letterboxd**.
 
 Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Unical** (Rende), **Teatro Italia / Tieri** (Cosenza), **Garden** (Rende).
 
@@ -10,7 +10,7 @@ Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Un
 
 - **In sala oggi**: per ogni film i cinema, le sale e solo gli spettacoli non ancora iniziati (gli spettacoli dopo mezzanotte contano come parte della serata). Gli orari passati spariscono da soli se la pagina resta aperta.
 - **In uscita**: film in prevendita o annunciati dai cinema ("prossimamente"), con la data e i cinema che li avranno.
-- **Voti V / ? / X** con filtri; cliccando di nuovo lo stesso voto lo si toglie.
+- **Voti V / ?** con filtri; cliccando di nuovo lo stesso voto lo si toglie.
 - **Uscita dalle sale automatica**: un film è "uscito" quando non compare più in nessun cinema per 7 giorni (3 per gli eventi), così i buchi di programmazione non creano falsi allarmi.
 - **Abbinamento a TMDB**: locandina, titolo ufficiale e anno; i doppioni scritti in modo diverso dai vari cinema (es. "MAMMINA" e "mammina (other mommy)", versioni V.O. o IMAX) vengono uniti in un solo film.
 - **Export per Letterboxd**: CSV con l'ID TMDB di ogni film, così Letterboxd sceglie il film esatto; i film già esportati non vengono ripetuti.
