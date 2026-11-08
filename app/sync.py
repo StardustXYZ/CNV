@@ -129,6 +129,8 @@ def _print_matching(report: MatchReport) -> None:
         print(f"\n[x] Non trovati su TMDB ({len(report.not_found)}):")
         for f in report.not_found:
             print(f"   * {f.raw_title}")
+    if report.details_filled:
+        print(f"\n[i] Durata e genere letti da TMDB: {report.details_filled} film")
     if report.errors:
         print("\n[!] Errori TMDB:")
         for err in report.errors:

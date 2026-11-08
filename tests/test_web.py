@@ -550,3 +550,28 @@ def test_home_times_open_the_purchase_page_and_cinema_links_to_its_page(client, 
     html = client.get("/").text
     assert 'href="https://buy/clay-21" target="_blank" rel="noopener"' in html
     assert '<a href="/cinema/andromeda" title="Tutti gli spettacoli di questo cinema">Andromeda River</a>' in html
+
+
+def test_runtime_formatting_and_show_end():
+    from app.services.schedule import show_end
+    from app.web.routes import format_runtime
+
+    assert [format_runtime(m) for m in (115, 120, 45, 61)] == ["1h 55m", "2h", "45m", "1h 01m"]
+    assert show_end(datetime(2026, 10, 17, 19, 30), 115) == datetime(2026, 10, 17, 21, 35)  # +10 min ads
+    assert show_end(datetime(2026, 10, 17, 19, 30), None) is None
+
+
+def test_shows_have_end_time_genre_and_runtime(client, session, cinema):
+    clay = add_film(session, "Clayface", "in_sala", [], cinema, tmdb_id=1, tmdb_title="Clayface",
+                    tmdb_match_status="abbinato", runtime=115, genre="Horror", details_tmdb_id=1)
+    add_show(session, clay, cinema, TODAY, time(23, 30))
+    old = add_film(session, "Cambiato", "in_sala", [], cinema, tmdb_id=2, tmdb_match_status="manuale",
+                   runtime=200, genre="Western", details_tmdb_id=99)  # details of the previous match
+    add_show(session, old, cinema, TODAY, time(21, 0))
+
+    for html in (client.get("/").text, client.get("/cinema/andromeda").text):
+        main = html[html.index("<main"):]
+        assert '<span class="show-end">→01:35</span>' in main  # 23:30 + 1h55 + 10 min, after midnight
+        assert "<span>Horror</span>" in main and ">1h 55m<" in main
+        assert "Western" not in main and "3h 20m" not in main
+        assert main.count('class="show-end"') == 1

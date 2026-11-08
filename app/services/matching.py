@@ -23,7 +23,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import ComingSoon, DailySnapshot, Film, FilmAlias, FilmMerge, Showtime
-from app.services.tmdb import MovieSearcher, TmdbMovie
+from app.services.tmdb import MovieDetails, MovieSearcher, TmdbMovie
 from app.services.titles import normalize_title
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,7 @@ class MatchReport:
     merges: dict[int, int] = field(default_factory=dict)  # merged film id -> surviving film id
     merged_titles: list[tuple[str, str]] = field(default_factory=list)  # (merged title, surviving title)
     errors: list[str] = field(default_factory=list)
+    details_filled: int = 0  # films that got runtime and genre from TMDB
 
 
 # ------------------------------------------------------------------
@@ -243,6 +244,54 @@ def _apply_movie(film: Film, movie: TmdbMovie, status: str, confidence: float, n
     film.tmdb_match_status = status
     film.tmdb_confidence = round(confidence, 3)
     film.tmdb_checked_at = now
+    if movie.has_details:  # chosen by hand: the movie comes from the details, nothing to fetch later
+        _apply_details(film, movie)
+
+
+def _apply_details(film: Film, movie: TmdbMovie) -> None:
+    film.runtime = movie.runtime
+    film.genre = movie.main_genre
+    film.details_tmdb_id = movie.id
+
+
+DETAILS_PER_SYNC = 60  # TMDB requests for runtime and genre in one sync: the rest go to the next one
+
+
+async def fill_film_details(db: Session, fetcher: MovieDetails, report: MatchReport | None = None) -> int:
+    """Fetch runtime and main genre of confirmed films that do not have them yet.
+
+    Films that left theaters are skipped (no show times to end), and a film whose TMDB
+    match changed is fetched again. Saves after each film; returns how many got details.
+    """
+    films = (
+        db.query(Film)
+        .filter(
+            Film.tmdb_id.isnot(None),
+            Film.tmdb_match_status.in_((STATUS_MATCHED, STATUS_MANUAL)),
+            Film.status != "uscito",
+            or_(Film.details_tmdb_id.is_(None), Film.details_tmdb_id != Film.tmdb_id),
+        )
+        .order_by(Film.id)
+        .limit(DETAILS_PER_SYNC)
+        .all()
+    )
+    filled = 0
+    for film in films:
+        try:
+            movie = await fetcher.get_movie(film.tmdb_id)
+        except httpx.HTTPError as err:
+            logger.warning("Dettagli TMDB di '%s' non disponibili: %s", film.raw_title, err)
+            if report is not None:
+                report.errors.append(f"Durata e genere di '{film.raw_title}': {err}")
+            break  # TMDB is not answering: the next sync tries again
+        if movie is None:
+            # No longer on TMDB: nothing to show, and no point asking every day
+            film.runtime, film.genre, film.details_tmdb_id = None, None, film.tmdb_id
+        else:
+            _apply_details(film, movie)
+            filled += 1
+        db.commit()
+    return filled
 
 
 def _utc_naive(value: datetime | None) -> datetime | None:

@@ -244,7 +244,12 @@ code { background: var(--surface-2); padding: 0 0.3em; border-radius: 4px; }
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     text-decoration: none;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
 }
+.show-end { font-size: 0.68em; font-weight: 500; color: var(--text-muted); }
 a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 .cinema a { color: inherit; text-decoration: none; }
 .cinema a:hover { text-decoration: underline; }

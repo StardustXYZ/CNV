@@ -45,6 +45,12 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN tmdb_confidence FLOAT"))
             if "tmdb_checked_at" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN tmdb_checked_at DATETIME"))
+            if "runtime" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN runtime INTEGER"))
+            if "genre" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN genre VARCHAR(50)"))
+            if "details_tmdb_id" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN details_tmdb_id INTEGER"))
 
         if "showtimes" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("showtimes")}
