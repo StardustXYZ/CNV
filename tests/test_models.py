@@ -62,7 +62,7 @@ def test_film_vote_values(db):
     db.add(film)
     db.commit()
 
-    for v in ("V", "?", "X"):
+    for v in ("V", "?"):
         film.vote = v
         db.commit()
         db.refresh(film)
@@ -126,3 +126,26 @@ def test_daily_snapshot_and_sync_run(db):
     assert sync_run.status == "ok"
 
 
+
+
+def test_init_db_drops_the_old_x_votes(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import importlib
+
+    engine_module = importlib.import_module("app.db.engine")
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'vecchio.db').as_posix()}")
+    monkeypatch.setattr(engine_module, "engine", engine)
+    engine_module.init_db()
+    with sessionmaker(bind=engine)() as db:
+        for title, vote in (("Voglio", "V"), ("Forse", "?"), ("No", "X")):
+            db.add(Film(raw_title=title, normalized_title=title.lower(), vote=vote))
+        db.commit()
+
+    engine_module.init_db()  # next start of CNV
+
+    with sessionmaker(bind=engine)() as db:
+        assert {f.raw_title: f.vote for f in db.query(Film)} == {"Voglio": "V", "Forse": "?", "No": None}
+    engine.dispose()

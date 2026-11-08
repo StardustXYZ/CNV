@@ -36,7 +36,7 @@ STATUS_MANUAL = "manuale"
 AUTO_MIN_SIMILARITY = 0.85  # below this the best candidate always goes to review
 AUTO_MIN_MARGIN = 0.08  # score gap required between best and runner-up
 NOT_FOUND_RETRY_DAYS = 7
-VOTE_PRIORITY = {"V": 3, "?": 2, "X": 1}  # which vote wins when two duplicates are merged
+VOTE_PRIORITY = {"V": 2, "?": 1}  # which vote wins when two duplicates are merged
 MAX_RESULTS_PER_QUERY = 10
 MAX_CONSECUTIVE_API_ERRORS = 3
 
@@ -368,7 +368,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
             db.add(FilmAlias(normalized_title=title, film_id=survivor.id))
 
     # Film fields. Different votes on the two copies: keep the most interested one
-    # (V over ?, ? over X), so a "want to see" is never lost.
+    # (V over ?), so a "want to see" is never lost.
     survivor.vote = max(
         (v for v in (survivor.vote, other.vote) if v), key=lambda v: VOTE_PRIORITY.get(v, 0), default=None
     )

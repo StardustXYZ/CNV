@@ -290,7 +290,7 @@ def test_merge_keeps_the_most_interested_vote(db):
         db.flush()
         return f
 
-    for survivor_vote, other_vote, expected in [("X", "V", "V"), ("?", "X", "?"), (None, "?", "?"), ("V", None, "V")]:
+    for survivor_vote, other_vote, expected in [("?", "V", "V"), ("V", "?", "V"), (None, "?", "?"), ("V", None, "V")]:
         survivor, other = film(f"A{expected}{survivor_vote}", survivor_vote), film(f"B{expected}{other_vote}", other_vote)
         merge_films(db, survivor, other)
         assert survivor.vote == expected

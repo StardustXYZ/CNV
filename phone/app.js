@@ -7,9 +7,9 @@
 const WEEKDAYS = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
 const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
-const VOTES = ["V", "?", "X"];
-const VOTE_TITLES = { "V": "Voglio vederlo", "?": "Non so", "X": "Non mi interessa" };
-const VOTE_PRIORITY = { "V": 3, "?": 2, "X": 1 }; // two merged copies keep the most interested vote
+const VOTES = ["V", "?"];
+const VOTE_TITLES = { "V": "Voglio vederlo", "?": "Indeciso" };
+const VOTE_PRIORITY = { "V": 2, "?": 1 }; // two merged copies keep the most interested vote
 const LATE_SHOW_CUTOFF = "06:00"; // shows listed before this hour run after midnight
 const STALE_AFTER_HOURS = 30;
 const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
@@ -17,7 +17,7 @@ const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
 let DATA = null;
 let FILMS = new Map();
 let CINEMAS = new Map();
-let votes = load("cnv.votes", {});        // film id -> "V" | "?" | "X"
+let votes = knownVotes(load("cnv.votes", {}));  // film id -> "V" | "?"
 let exported = load("cnv.exported", {});  // film id -> date the CSV was imported on Letterboxd
 let shownPage = "";                       // HTML of the page on screen, for the minute refresh
 
@@ -28,6 +28,10 @@ function load(key, fallback) {
 }
 function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: not saved */ }
+}
+/** Only V and ?: the old X ("non mi interessa") is dropped and the film goes back to "da votare". */
+function knownVotes(map) {
+    return Object.fromEntries(Object.entries(map || {}).filter(([, v]) => VOTES.includes(v)));
 }
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pad = (n) => String(n).padStart(2, "0");
@@ -208,7 +212,7 @@ function filmCard(film, ctx, mode) {
 
 function pageInSala(ctx, params) {
     const voto = params.get("voto");
-    const filters = [[null, "Tutti"], ["nessuno", "Da votare"], ["V", "V"], ["?", "?"], ["X", "X"]];
+    const filters = [[null, "Tutti"], ["nessuno", "Da votare"], ["V", "V"], ["?", "?"]];
     let films = DATA.films.filter((f) => f.status === "in_sala");
     if (voto === "nessuno") films = films.filter((f) => !votes[f.id]);
     else if (VOTES.includes(voto)) films = films.filter((f) => votes[f.id] === voto);
@@ -448,8 +452,9 @@ document.addEventListener("change", (e) => {
     e.target.files[0].text().then((text) => {
         const backup = JSON.parse(text);
         if (!backup || typeof backup.votes !== "object") throw new Error("file non valido");
-        if (!confirm(`Ripristinare ${Object.keys(backup.votes).length} voti? Quelli attuali verranno sostituiti.`)) return;
-        votes = backup.votes;
+        const restored = knownVotes(backup.votes);
+        if (!confirm(`Ripristinare ${Object.keys(restored).length} voti? Quelli attuali verranno sostituiti.`)) return;
+        votes = restored;
         exported = backup.exported || {};
         save("cnv.votes", votes);
         save("cnv.exported", exported);
@@ -499,6 +504,7 @@ function start(data, offline) {
     FILMS = new Map(data.films.map((f) => [f.id, f]));
     CINEMAS = new Map(data.cinemas.map((c) => [c.slug, c]));
     applyMerges(data.merged);
+    save("cnv.votes", votes); // without the old X votes
     render();
     showUpdated(offline);
     if (!offline) prunePosters();

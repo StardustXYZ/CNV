@@ -290,7 +290,6 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 .btn-vote:hover { border-color: var(--accent); }
 .btn-vote.active.vote-opt-1 { background: var(--green); border-color: var(--green); color: #fff; }
 .btn-vote.active.vote-opt-2 { background: var(--yellow); border-color: var(--yellow); color: #000; }
-.btn-vote.active.vote-opt-3 { background: var(--red); border-color: var(--red); color: #fff; }
 
 /* ---- Review page ---- */
 .review-list { display: flex; flex-direction: column; gap: 1rem; }

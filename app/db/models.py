@@ -46,7 +46,7 @@ class Film(Base):
     tmdb_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     poster_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Anno
-    vote: Mapped[str | None] = mapped_column(String(1), nullable=True)  # stato_utente: V / ? / X / None
+    vote: Mapped[str | None] = mapped_column(String(1), nullable=True)  # stato_utente: V / ? (indeciso) / None
     status: Mapped[str] = mapped_column(String(50), default="in_uscita", index=True)  # in_uscita | in_sala | uscito
     left_theaters_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # data_uscita_dalle_sale
     letterboxd_exported: Mapped[bool] = mapped_column(Boolean, default=False)  # esportato_letterboxd
