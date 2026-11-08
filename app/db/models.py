@@ -60,6 +60,8 @@ class Film(Base):
     runtime: Mapped[int | None] = mapped_column(Integer, nullable=True)  # minutes, from the TMDB details
     genre: Mapped[str | None] = mapped_column(String(50), nullable=True)  # main genre, from the TMDB details
     details_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # TMDB film runtime/genre belong to
+    # The "now in sala" notice for a V film was seen (or the vote was given while in sala)
+    in_sala_noticed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     showtimes: Mapped[list[Showtime]] = relationship(back_populates="film", cascade="all, delete-orphan")
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")

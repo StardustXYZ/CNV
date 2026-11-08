@@ -679,6 +679,9 @@ async def run_sync(
             # Tolerates gaps: remains in_sala as long as missing < threshold
             target_status = "in_sala"
 
+        if target_status != "in_sala":
+            film.in_sala_noticed = False  # if it comes back to theaters, that is news again
+
         # Apply state transitions
         if old_status == "uscito" and target_status == "in_sala":
             # Reappeared after being marked uscito

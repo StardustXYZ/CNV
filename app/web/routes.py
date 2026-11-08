@@ -300,11 +300,26 @@ def _cinema_menu(db: Session, now: datetime) -> list[CinemaMenuItem]:
     ]
 
 
+def _v_arrivals(db: Session, now: datetime) -> list[Film]:
+    """Films voted V that arrived in theaters and whose notice was not dismissed yet."""
+    films = (
+        db.query(Film)
+        .filter(Film.status == "in_sala", Film.vote == "V", Film.in_sala_noticed.is_(False))
+        .all()
+    )
+    upcoming = _films_with_upcoming_shows(db, now) if films else set()
+    return sorted((f for f in films if f.id in upcoming), key=lambda f: _film_title(f).lower())
+
+
+def _film_title(film: Film) -> str:
+    return film.tmdb_title if film.is_tmdb_confirmed and film.tmdb_title else film.raw_title
+
+
 def _render(request: Request, db: Session, name: str, active: str, **context) -> HTMLResponse:
     now = _now()
     context.update(
         active=active, counts=_nav_counts(db), today=now.date(), votes=VOTES, cinema_menu=_cinema_menu(db, now),
-        programme_day=programme_day(now),
+        programme_day=programme_day(now), arrivals=_v_arrivals(db, now), film_title=_film_title,
     )
     return templates.TemplateResponse(request, name, context)
 
@@ -488,8 +503,23 @@ def vote_film(request: Request, film_id: int, v: str = Form(""), db: Session = D
     if v not in (*VOTES, ""):
         raise HTTPException(status_code=422, detail="Voto non valido")
     film.vote = None if v in ("", film.vote) else v
+    if film.vote == "V" and film.status == "in_sala":
+        film.in_sala_noticed = True  # voted while in sala: no notice needed
     db.commit()
     return templates.TemplateResponse(request, "_vote.html", {"film": film, "votes": VOTES})
+
+
+@router.post("/avviso-in-sala/visto")
+def dismiss_arrivals(
+    request: Request, ids: list[int] = Form(default=[]), dopo: str = Form(""), db: Session = Depends(get_db)
+):
+    """Hide the "now in sala" notice for the films it listed (not for ones arrived meanwhile)."""
+    for film in db.query(Film).filter(Film.id.in_(ids)):
+        film.in_sala_noticed = True
+    db.commit()
+    if _is_htmx(request):
+        return HTMLResponse("")
+    return RedirectResponse(_safe_path(dopo) or "/", status_code=303)
 
 
 @router.post("/film/{film_id}/tmdb/conferma")

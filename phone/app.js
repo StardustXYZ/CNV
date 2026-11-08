@@ -21,6 +21,7 @@ let votes = knownVotes(load("cnv.votes", {}));  // film id -> "V" | "?"
 let exported = load("cnv.exported", {});  // film id -> date the CSV was imported on Letterboxd
 let shownPage = "";                       // HTML of the page on screen, for the minute refresh
 let swipeDirection = "";                  // "next" | "prev": slide-in of the page drawn after a swipe
+let inSalaSeen = new Set();               // V films in sala whose notice was seen (see updateInSalaSeen)
 
 // ------------------------------------------------------------------ helpers
 
@@ -209,6 +210,30 @@ function filmCard(film, ctx, mode) {
     </article>`;
 }
 
+/** V films that arrived in theaters since their notice was last dismissed. */
+function vArrivals(ctx) {
+    return DATA.films
+        .filter((f) => f.status === "in_sala" && votes[f.id] === "V" && !inSalaSeen.has(f.id) && hasShows(f, ctx))
+        .sort((a, b) => a.title.localeCompare(b.title));
+}
+function arrivalsNotice(ctx) {
+    const films = vArrivals(ctx);
+    if (!films.length) return "";
+    return `<section class="notice arrivals"><p>🎬 <strong>Ora in sala</strong> tra i tuoi V:
+        ${films.map((f) => `<b>${esc(f.title)}</b>`).join(", ")}.</p>
+        <div class="arrivals-actions"><a href="#/?voto=V" class="btn">Vedi gli orari</a>
+        <button class="btn" data-action="dismiss-arrivals">Ok, visto</button></div></section>`;
+}
+/** Keep the seen list to films still in sala: one that leaves and comes back is news again.
+ * The first time, V films already in sala count as seen: only the next arrivals get the notice. */
+function updateInSalaSeen() {
+    const inSala = (id) => (FILMS.get(Number(id)) || {}).status === "in_sala";
+    const saved = load("cnv.inSalaSeen", null);
+    const ids = saved === null ? DATA.films.filter((f) => f.status === "in_sala" && votes[f.id] === "V").map((f) => f.id) : saved;
+    inSalaSeen = new Set(ids.map(Number).filter(inSala));
+    save("cnv.inSalaSeen", [...inSalaSeen]);
+}
+
 // ------------------------------------------------------------------ pages
 
 function pageInSala(ctx, params) {
@@ -359,6 +384,7 @@ function render(periodic = false) {
     else if (path === "/watchlist") { page = pageWatchlist(); active = "watchlist"; }
     else if (path === "/voti") { page = pageVoti(); active = "voti"; }
     else { page = pageInSala(ctx, params); active = "sala"; }
+    page = arrivalsNotice(ctx) + page;
 
     const app = document.getElementById("app");
     if (!periodic) {
@@ -433,11 +459,20 @@ document.addEventListener("click", (e) => {
         const id = Number(vote.dataset.film);
         if (votes[id] === vote.dataset.vote) delete votes[id]; else votes[id] = vote.dataset.vote;
         save("cnv.votes", votes);
+        if (votes[id] === "V" && FILMS.get(id).status === "in_sala") {
+            inSalaSeen.add(id); // voted while in sala: no notice needed
+            save("cnv.inSalaSeen", [...inSalaSeen]);
+        }
         document.querySelectorAll(`#vote-${id}`).forEach((box) => { box.outerHTML = voteBox(FILMS.get(id)); });
         return;
     }
     const action = e.target.closest("[data-action]")?.dataset.action;
     const today = isoDate(new Date());
+    if (action === "dismiss-arrivals") {
+        vArrivals(buildContext(new Date())).forEach((f) => inSalaSeen.add(f.id));
+        save("cnv.inSalaSeen", [...inSalaSeen]);
+        render();
+    }
     if (action === "export-csv") download(`letterboxd_watchlist_${today}.csv`, "text/csv", letterboxdCsv());
     if (action === "mark-exported" && confirm("Hai importato il file su Letterboxd?")) {
         toExport().forEach((f) => { exported[f.id] = today; });
@@ -576,6 +611,7 @@ function start(data, offline) {
     CINEMAS = new Map(data.cinemas.map((c) => [c.slug, c]));
     applyMerges(data.merged);
     save("cnv.votes", votes); // without the old X votes
+    updateInSalaSeen();
     render();
     showUpdated(offline);
     if (!offline) prunePosters();

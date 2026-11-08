@@ -575,3 +575,38 @@ def test_shows_have_end_time_genre_and_runtime(client, session, cinema):
         assert "<span>Horror</span>" in main and ">1h 55m<" in main
         assert "Western" not in main and "3h 20m" not in main
         assert main.count('class="show-end"') == 1
+
+
+def test_notice_of_v_films_arrived_in_sala(client, session, cinema):
+    clay = add_film(session, "Clayface", "in_sala", [0], cinema, vote="V")
+    add_film(session, "Forse", "in_sala", [0], cinema, vote="?")  # not a V
+    add_film(session, "Gia visto", "in_sala", [0], cinema, vote="V", in_sala_noticed=True)
+    add_film(session, "Finito", "in_sala", [-2], cinema, vote="V")  # no shows left
+    add_film(session, "Presto", "in_uscita", [5], cinema, vote="V")  # not in sala yet
+
+    for path in ("/", "/in-uscita", "/watchlist"):  # at the top of every page
+        notice = client.get(path).text.split('id="arrivals"', 1)[1].split("</section>", 1)[0]
+        assert "<b>Clayface</b>" in notice
+        assert "Forse" not in notice and "Gia visto" not in notice and "Finito" not in notice and "Presto" not in notice
+
+    # Arrived after the page was shown: dismissing the notice does not hide it
+    later = add_film(session, "Arrivato dopo", "in_sala", [0], cinema, vote="V")
+    resp = client.post("/avviso-in-sala/visto", data={"ids": [clay.id]}, headers={"HX-Request": "true"})
+    assert resp.status_code == 200 and resp.text == ""
+    session.expire_all()
+    assert session.get(Film, clay.id).in_sala_noticed and not session.get(Film, later.id).in_sala_noticed
+    html = client.get("/").text
+    assert "<b>Arrivato dopo</b>" in html and "<b>Clayface</b>" not in html
+
+    # Without JavaScript the form goes back to the page it came from
+    resp = client.post("/avviso-in-sala/visto", data={"ids": [later.id], "dopo": "/watchlist"}, follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"] == "/watchlist"
+    assert 'id="arrivals"' not in client.get("/").text
+
+
+def test_voting_v_a_film_already_in_sala_needs_no_notice(client, session, cinema):
+    film = add_film(session, "Clayface", "in_sala", [0], cinema)
+    client.post(f"/film/{film.id}/vote", data={"v": "V"})
+    session.expire_all()
+    assert session.get(Film, film.id).in_sala_noticed
+    assert 'id="arrivals"' not in client.get("/").text
