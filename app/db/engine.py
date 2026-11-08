@@ -51,6 +51,10 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN genre VARCHAR(50)"))
             if "details_tmdb_id" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN details_tmdb_id INTEGER"))
+            if "in_sala_noticed" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN in_sala_noticed BOOLEAN DEFAULT 0"))
+                # V films already in sala are not news: only the next arrivals get the notice
+                conn.execute(text("UPDATE films SET in_sala_noticed = 1 WHERE status = 'in_sala' AND vote = 'V'"))
             # The X vote ("non mi interessa") no longer exists: those films go back to "da votare"
             conn.execute(text("UPDATE films SET vote = NULL WHERE vote = 'X'"))
 
