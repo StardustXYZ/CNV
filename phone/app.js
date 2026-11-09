@@ -230,7 +230,8 @@ function updateInSalaSeen() {
     const inSala = (id) => (FILMS.get(Number(id)) || {}).status === "in_sala";
     const saved = load("cnv.inSalaSeen", null);
     const ids = saved === null ? DATA.films.filter((f) => f.status === "in_sala" && votes[f.id] === "V").map((f) => f.id) : saved;
-    inSalaSeen = new Set(ids.map(Number).filter(inSala));
+    const merged = DATA.merged || {}; // a duplicate merged into another film: its notice was seen too
+    inSalaSeen = new Set(ids.map((id) => Number(merged[id] ?? id)).filter(inSala));
     save("cnv.inSalaSeen", [...inSalaSeen]);
 }
 
