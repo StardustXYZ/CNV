@@ -2,7 +2,7 @@
 {% if arrivals %}
 <section class="notice arrivals" id="arrivals">
     <p>🎬 <strong>Ora in sala</strong> tra i tuoi V:
-        {% for f in arrivals %}<b>{{ film_title(f) }}</b>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+        {% for f in arrivals %}<a href="/film/{{ f.id }}" class="film-title-link"><b>{{ film_title(f) }}</b></a>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
     <form method="post" action="/avviso-in-sala/visto" hx-post="/avviso-in-sala/visto" hx-target="#arrivals" hx-swap="outerHTML" class="arrivals-actions">
         {% for f in arrivals %}<input type="hidden" name="ids" value="{{ f.id }}">{% endfor %}
         <input type="hidden" name="dopo" value="{{ request.url.path }}">

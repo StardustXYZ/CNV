@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ card.title }}{% endblock %}
+
+{% block content %}
+{% set film = card.film %}
+<article class="film-page">
+    {% if film.poster_url and film.is_tmdb_confirmed %}
+    <img src="{{ film.poster_url }}" alt="Locandina di {{ card.title }}" class="film-page-poster" width="342" height="513">
+    {% else %}
+    <div class="film-page-poster placeholder">🎬</div>
+    {% endif %}
+    <div class="film-page-info">
+        <h1>{{ card.title }}</h1>
+        <div class="meta">
+            {% if film.year and film.is_tmdb_confirmed %}<span>{{ film.year }}</span>{% endif %}
+            {% if film.has_tmdb_details and film.genre %}<span>{{ film.genre }}</span>{% endif %}
+            {% if film.has_tmdb_details and film.runtime %}<span title="Durata del film">{{ film.runtime | durata }}</span>{% endif %}
+            {% if film.is_event %}<span class="tag">Evento</span>{% endif %}
+            {% if film.is_tmdb_confirmed %}
+            <a href="https://www.themoviedb.org/movie/{{ film.tmdb_id }}" target="_blank" rel="noopener" class="ext-link">TMDB ↗</a>
+            {% endif %}
+            <a href="/film/{{ film.id }}/abbinamento" class="ext-link change-match" title="Locandina o titolo sbagliati? Cambia l'abbinamento TMDB">{% if film.is_tmdb_confirmed %}cambia{% else %}abbina{% endif %}</a>
+        </div>
+        <p class="small">
+            {% if film.status == "in_sala" and card.in_sala_since %}In sala dal {{ card.in_sala_since | data_lunga(today) }}
+            {% elif film.status == "in_uscita" and card.first_date %}In uscita dal {{ card.first_date | data_lunga(today) }}
+            {% elif film.status == "in_uscita" %}In uscita, data da definire
+            {% elif film.status == "uscito" and film.left_theaters_date %}Uscito dalle sale il {{ film.left_theaters_date | data_lunga(today) }}
+            {% endif %}
+        </p>
+        {% include "_vote.html" %}
+    </div>
+</article>
+
+{% if cinemas %}
+<h2 class="section-title">Spettacoli</h2>
+<p class="subtitle small">Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.</p>
+<div class="film-cinemas">
+    {% for c in cinemas %}
+    <section class="film-cinema">
+        <h3><a href="/cinema/{{ c.slug }}" title="Tutti gli spettacoli di questo cinema">{{ c.name }}</a></h3>
+        {% for d in c.days %}
+        <div class="film-day">
+            <p class="film-day-label">{% if d.day == programme_day %}Oggi{% else %}{{ d.day | giorno(programme_day) | capitalize }}{% endif %}</p>
+            <div class="film-day-salas">
+                {% for s in d.salas %}<p class="day-sala">{% include "_sala_shows.html" %}</p>{% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </section>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">
+    Nessuno spettacolo in programma.
+    {% if card.exit_date %}<br>Esce dalle sale il {{ card.exit_date | data_lunga(today) }} se non ricompare.{% endif %}
+</p>
+{% endif %}
+
+{% if card.announced_elsewhere %}
+<p class="small announced">In arrivo anche: {% for c in card.announced_elsewhere %}{{ c.cinema }}{% if c.first_date %} (dal {{ c.first_date | data_lunga(today) }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% endif %}
+{% endblock %}

@@ -160,6 +160,7 @@ function salaShows(s) {
     ).join("");
     return `<span class="sala">${esc(s.sala || "Sala")}</span>${times}`;
 }
+const filmLink = (film) => `<a href="#/film/${film.id}" class="film-title-link" title="Tutti gli spettacoli">${esc(film.title)}</a>`;
 function poster(film, cls) {
     return film.poster
         ? `<img src="${esc(film.poster)}" alt="" class="${cls}" loading="lazy">`
@@ -208,7 +209,7 @@ function filmCard(film, ctx, mode) {
     const since = mode === "oggi" && film.since
         ? `<p class="small in-sala-since" title="Primo giorno di programmazione a Cosenza e Rende">In sala dal ${longDate(film.since, ctx.day)}</p>` : "";
     return `<article class="film-card">${poster(film, "poster")}
-        <div class="film-info"><h3>${esc(film.title)}</h3>${meta(film)}${since}${body}${voteBox(film)}</div>
+        <div class="film-info"><h3>${filmLink(film)}</h3>${meta(film)}${since}${body}${voteBox(film)}</div>
     </article>`;
 }
 
@@ -222,7 +223,7 @@ function arrivalsNotice(ctx) {
     const films = vArrivals(ctx);
     if (!films.length) return "";
     return `<section class="notice arrivals"><p>🎬 <strong>Ora in sala</strong> tra i tuoi V:
-        ${films.map((f) => `<b>${esc(f.title)}</b>`).join(", ")}.</p>
+        ${films.map((f) => `<a href="#/film/${f.id}" class="film-title-link"><b>${esc(f.title)}</b></a>`).join(", ")}.</p>
         <div class="arrivals-actions"><a href="#/?voto=V" class="btn">Vedi gli orari</a>
         <button class="btn" data-action="dismiss-arrivals">Ok, visto</button></div></section>`;
 }
@@ -261,7 +262,7 @@ function pageInSala(ctx, params) {
             <ul class="gone-list">${gone.map((f) => {
                 const days = f.event ? DATA.settings.days_to_uscito_evento : DATA.settings.days_to_uscito;
                 const exit = f.last_seen ? addDays(f.last_seen, days) : null;
-                return `<li><span class="gone-title">${esc(f.title)}</span>
+                return `<li><a href="#/film/${f.id}" class="gone-title film-title-link">${esc(f.title)}</a>
                     <span class="small">${f.last_seen ? `visto l'ultima volta ${formatDay(f.last_seen, ctx.day)}` : ""}${exit ? ` · uscito dalle sale dal ${longDate(exit, ctx.day)} se non ricompare` : ""}</span>
                     ${voteBox(f)}</li>`;
             }).join("")}</ul></details>`;
@@ -314,9 +315,50 @@ function pageCinema(ctx, slug, params) {
         .sort((a, b) => Math.min(...a.salas.map((s) => s.shows[0].start)) - Math.min(...b.salas.map((s) => s.shows[0].start)));
     return html + `<div class="day-films">${films.map(({ film, salas: list }) => `<article class="day-film">
         ${poster(film, "thumb")}
-        <div class="day-film-info"><h3>${esc(film.title)}</h3>${meta(film)}
+        <div class="day-film-info"><h3>${filmLink(film)}</h3>${meta(film)}
             ${list.map((s) => `<p class="day-sala">${salaShows(s)}</p>`).join("")}
             ${voteBox(film)}</div></article>`).join("")}</div>`;
+}
+
+/** One film: every show still to come, day by day, split by cinema. */
+function pageFilm(ctx, id) {
+    const film = FILMS.get(id);
+    if (!film) return `<p class="empty-state">Film non trovato.</p>`;
+    const cinemas = [];
+    for (const [slug, byDay] of ctx.byCinemaDay) {
+        const days = [...byDay.keys()].sort()
+            .filter((d) => byDay.get(d).has(id))
+            .map((d) => ({ day: d, salas: salas(byDay.get(d).get(id)) }));
+        if (days.length) cinemas.push({ slug, days });
+    }
+    cinemas.sort((a, b) => a.days[0].salas[0].shows[0].start - b.days[0].salas[0].shows[0].start
+        || cinemaName(a.slug).localeCompare(cinemaName(b.slug)));
+    const releases = cinemaReleases(film, ctx);
+    const firstRelease = releases.find((r) => r.date)?.date;
+    const status = film.status === "in_sala" && film.since ? `In sala dal ${longDate(film.since, ctx.day)}`
+        : film.status === "in_uscita" ? (firstRelease ? `In uscita dal ${longDate(firstRelease, ctx.day)}` : "In uscita, data da definire")
+        : film.status === "uscito" && film.left ? `Uscito dalle sale il ${longDate(film.left, ctx.day)}` : "";
+
+    let html = `<article class="film-page">${poster(film, "film-page-poster")}
+        <div class="film-page-info"><h1>${esc(film.title)}</h1>${meta(film)}
+            ${status ? `<p class="small">${status}</p>` : ""}${voteBox(film)}</div></article>`;
+    if (cinemas.length) {
+        html += `<h2 class="section-title">Spettacoli</h2>
+            <p class="subtitle small">Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.</p>
+            <div class="film-cinemas">${cinemas.map((c) => `<section class="film-cinema">
+                <h3><a href="#/cinema/${esc(c.slug)}">${esc(cinemaName(c.slug))}</a></h3>
+                ${c.days.map((d) => `<div class="film-day">
+                    <p class="film-day-label">${d.day === ctx.day ? "Oggi" : capitalize(formatDay(d.day, ctx.day))}</p>
+                    <div class="film-day-salas">${d.salas.map((s) => `<p class="day-sala">${salaShows(s)}</p>`).join("")}</div>
+                </div>`).join("")}</section>`).join("")}</div>`;
+    } else {
+        html += `<p class="empty-state">Nessuno spettacolo in programma.</p>`;
+    }
+    const elsewhere = releases.filter((r) => r.announced);
+    if (elsewhere.length) {
+        html += `<p class="small announced">In arrivo anche: ${elsewhere.map((r) => esc(cinemaName(r.slug)) + (r.date ? ` (dal ${longDate(r.date, ctx.day)})` : "")).join(", ")}</p>`;
+    }
+    return html;
 }
 
 function pageWatchlist() {
@@ -383,6 +425,9 @@ function render(periodic = false) {
         const slug = decodeURIComponent(path.slice("/cinema/".length));
         page = pageCinema(ctx, slug, params);
         active = "cinema:" + slug;
+    } else if (path.startsWith("/film/")) {
+        page = pageFilm(ctx, Number(path.slice("/film/".length)));
+        active = "film";
     } else if (path === "/uscita") { page = pageInUscita(ctx); active = "uscita"; }
     else if (path === "/watchlist") { page = pageWatchlist(); active = "watchlist"; }
     else if (path === "/voti") { page = pageVoti(); active = "voti"; }
