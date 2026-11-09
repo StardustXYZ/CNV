@@ -94,3 +94,13 @@ def test_build_data_has_the_first_day_each_film_was_shown(db):
     films = {f["id"]: f for f in build_data(db, today=TODAY, now=NOW)["films"]}
     assert films[clay.id]["since"] == "2026-10-20"  # its oldest show, even if too old to be exported
     assert films[doubt.id]["since"] is None  # only announced
+
+
+def test_build_data_lists_cinemas_not_updated(db):
+    from app.db.models import SyncRun
+
+    _seed(db)
+    andromeda = db.query(Cinema).one()
+    db.add(SyncRun(sync_date=TODAY, cinema_id=andromeda.id, status="error", created_at=datetime(2026, 10, 30, 2)))
+    db.commit()
+    assert build_data(db, today=TODAY, now=NOW)["not_updated"] == {"andromeda": None}

@@ -767,3 +767,20 @@ async def run_sync(
         matching=match_report,
         coming_soon=coming_counts,
     )
+
+
+def cinemas_not_updated(db: Session) -> list[tuple[Cinema, date | None]]:
+    """Cinemas whose site failed at the last sync, with the day of their last good one.
+
+    Their shows are the ones read that day and may have changed since.
+    """
+    result = []
+    for cinema in db.query(Cinema).order_by(Cinema.name):
+        last = db.query(SyncRun).filter_by(cinema_id=cinema.id).order_by(SyncRun.created_at.desc(), SyncRun.id.desc()).first()
+        if last is None or last.status == "ok":
+            continue
+        last_ok = (
+            db.query(func.max(SyncRun.sync_date)).filter(SyncRun.cinema_id == cinema.id, SyncRun.status == "ok").scalar()
+        )
+        result.append((cinema, last_ok))
+    return result

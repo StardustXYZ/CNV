@@ -332,6 +332,7 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 .export-actions .btn-export { margin: 0; }
 .notice { background: var(--surface); border-left: 3px solid var(--yellow); border-radius: var(--radius); padding: 0.75rem 1rem; margin: 1rem 0; font-size: 0.9rem; }
 .notice.arrivals { border-left-color: var(--green); }
+.notice.not-updated { border-left-color: var(--red); }
 .arrivals-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
 .inline-form { display: inline; }
 

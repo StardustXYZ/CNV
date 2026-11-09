@@ -23,6 +23,7 @@ from app.config import ROOT_DIR, settings
 from app.db.engine import SessionLocal, init_db
 from app.db.models import Cinema, ComingSoon, Film, FilmMerge, Showtime
 from app.services.schedule import SHOW_EXTRA_MINUTES
+from app.services.sync import cinemas_not_updated
 
 PHONE_DIR = ROOT_DIR / "phone"
 STYLE_CSS = ROOT_DIR / "app" / "web" / "static" / "style.css"
@@ -89,6 +90,8 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
             "show_extra_minutes": SHOW_EXTRA_MINUTES,
         },
         "cinemas": [{"slug": c.slug, "name": c.name, "url": c.url} for c in cinemas],
+        # Sites that did not answer at the last sync: {slug: last good day or None}
+        "not_updated": {c.slug: d.isoformat() if d else None for c, d in cinemas_not_updated(db)},
         "films": films,
         "shows": shows,
         "coming": coming,

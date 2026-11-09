@@ -8,6 +8,8 @@
     <p class="subtitle">Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.</p>
 </header>
 
+{% include "_cinema_status.html" %}
+
 {% if days %}
 <nav class="calendar" aria-label="Giorni in programmazione">
     {% for d in days %}
