@@ -38,7 +38,9 @@ MONTHS = [
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
-VOTES = ("V", "?")  # V: voglio vederlo, ?: indeciso
+VOTES = ("V", "?", "S")  # V: voglio vederlo, ?: indeciso, S: visto (shown as ✓)
+VOTE_LABELS = {"V": "V", "?": "?", "S": "✓"}
+VOTE_TITLES = {"V": "Voglio vederlo", "?": "Indeciso", "S": "Visto"}
 VOTE_FILTERS = {"V": "V", "?": "?", "nessuno": None}
 REVIEW_STATUSES = (STATUS_REVIEW, STATUS_NOT_FOUND)
 
@@ -91,6 +93,8 @@ templates.env.filters["giorno"] = format_day
 templates.env.filters["data_lunga"] = format_long_date
 templates.env.filters["durata"] = format_runtime
 templates.env.globals["WEEKDAYS"] = WEEKDAYS
+templates.env.globals["VOTE_LABELS"] = VOTE_LABELS
+templates.env.globals["VOTE_TITLES"] = VOTE_TITLES
 templates.env.globals["asset_version"] = asset_version
 templates.env.filters["ora_locale"] = format_local_time
 
@@ -305,6 +309,7 @@ def _nav_counts(db: Session) -> dict[str, int]:
         "watchlist": db.query(Film)
         .filter(Film.status == "uscito", Film.vote.in_(["V", "?"]), Film.letterboxd_exported.is_(False))
         .count(),
+        "visti": len(export_service.diary_exportable(db)),
     }
 
 
@@ -660,17 +665,113 @@ def status_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
+def _vote_box(request: Request, film: Film, ask_cinema: list[Cinema] | None = None) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "_vote.html", {"film": film, "votes": VOTES, "today": _now().date(), "ask_cinema": ask_cinema}
+    )
+
+
+def _seen_cinema_choices(db: Session, film: Film, day: date) -> list[Cinema]:
+    """Cinemas where the film was shown in the last month (up to today): where it was probably seen."""
+    cinemas = (
+        db.query(Cinema)
+        .join(Showtime, Showtime.cinema_id == Cinema.id)
+        .filter(Showtime.film_id == film.id, Showtime.date <= day, Showtime.date >= day - timedelta(days=30))
+        .distinct()
+        .order_by(Cinema.name)
+        .all()
+    )
+    return cinemas or db.query(Cinema).order_by(Cinema.name).all()
+
+
 @router.post("/film/{film_id}/vote", response_class=HTMLResponse)
 def vote_film(request: Request, film_id: int, v: str = Form(""), db: Session = Depends(get_db)):
-    """Save a vote (V / ?). Clicking the current vote again removes it. Returns an htmx partial."""
+    """Save a vote (V / ? / S = seen). Clicking the current vote again removes it. Returns an htmx partial.
+
+    Marking a film seen records the day (the programme day: after midnight, last night) and
+    asks in which cinema.
+    """
     film = _get_film(db, film_id)
     if v not in (*VOTES, ""):
         raise HTTPException(status_code=422, detail="Voto non valido")
     film.vote = None if v in ("", film.vote) else v
     if film.vote == "V" and film.status == "in_sala":
         film.in_sala_noticed = True  # voted while in sala: no notice needed
+    ask_cinema = None
+    if film.vote == "S":
+        film.seen_on = programme_day(_now())
+        film.seen_cinema_id = None
+        ask_cinema = _seen_cinema_choices(db, film, film.seen_on)
+    else:
+        film.seen_on, film.seen_cinema_id, film.diary_exported = None, None, False
     db.commit()
-    return templates.TemplateResponse(request, "_vote.html", {"film": film, "votes": VOTES})
+    return _vote_box(request, film, ask_cinema)
+
+
+@router.post("/film/{film_id}/visto-dove", response_class=HTMLResponse)
+def seen_where(request: Request, film_id: int, cinema: str = Form(""), db: Session = Depends(get_db)):
+    """The cinema where a seen film was watched (empty: skipped). Returns the vote partial."""
+    film = _get_film(db, film_id)
+    chosen = db.query(Cinema).filter_by(slug=cinema).first() if cinema else None
+    film.seen_cinema_id = chosen.id if chosen else None
+    db.commit()
+    return _vote_box(request, film)
+
+
+@router.post("/film/{film_id}/visto")
+def edit_seen(
+    film_id: int, seen_on: str = Form(""), cinema: str = Form(""), db: Session = Depends(get_db)
+):
+    """Change the day and cinema of a seen film (from the "Visti" page)."""
+    film = _get_film(db, film_id)
+    if film.vote != "S":
+        raise HTTPException(status_code=409, detail="Il film non è segnato come visto")
+    try:
+        film.seen_on = date.fromisoformat(seen_on) if seen_on else film.seen_on
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Data non valida") from None
+    chosen = db.query(Cinema).filter_by(slug=cinema).first() if cinema else None
+    film.seen_cinema_id = chosen.id if chosen else None
+    db.commit()
+    return RedirectResponse("/visti", status_code=303)
+
+
+@router.get("/visti", response_class=HTMLResponse)
+def seen_page(request: Request, db: Session = Depends(get_db)):
+    """Films marked seen: day and cinema (editable) and the export to the Letterboxd diary."""
+    seen = export_service.seen_films(db)
+    return _render(
+        request, db, "visti.html", "visti",
+        seen=seen,
+        to_export=[f for f in seen if not f.diary_exported and f.is_tmdb_confirmed],
+        missing_tmdb=[f for f in seen if not f.diary_exported and not f.is_tmdb_confirmed],
+        cinemas=db.query(Cinema).order_by(Cinema.name).all(),
+    )
+
+
+@router.get("/visti/diario.csv")
+def export_diary(db: Session = Depends(get_db)):
+    """Download the Letterboxd diary CSV (does not mark anything as exported)."""
+    return StreamingResponse(
+        iter([export_service.export_diary_csv(db)]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=letterboxd_diario_{_now():%Y-%m-%d}.csv"},
+    )
+
+
+@router.post("/visti/esportati")
+def mark_diary_exported(film_ids: list[int] = Form(default=[]), db: Session = Depends(get_db)):
+    """The user imported the diary CSV on Letterboxd."""
+    export_service.mark_diary_exported(db, film_ids)
+    db.commit()
+    return RedirectResponse("/visti", status_code=303)
+
+
+@router.post("/film/{film_id}/diario-di-nuovo")
+def diary_again(film_id: int, db: Session = Depends(get_db)):
+    export_service.mark_diary_exported(db, [_get_film(db, film_id).id], exported=False)
+    db.commit()
+    return RedirectResponse("/visti", status_code=303)
 
 
 @router.post("/avviso-in-sala/visto")

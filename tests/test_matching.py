@@ -411,3 +411,15 @@ def test_merge_keeps_the_in_sala_notice_seen_on_either_copy(db):
     db.flush()
     merge_films(db, survivor, other)
     assert survivor.in_sala_noticed  # the "Ora in sala" notice does not come back
+
+
+def test_merge_keeps_seen_with_its_day_and_cinema(db):
+    from app.services.matching import merge_films
+
+    survivor = Film(raw_title="Hope", normalized_title="hope", status="in_sala", vote="V")
+    other = Film(raw_title="HOPE 2026", normalized_title="hope 2026", status="in_sala", vote="S",
+                 seen_on=date(2026, 11, 8), diary_exported=True)
+    db.add_all([survivor, other])
+    db.flush()
+    merge_films(db, survivor, other)
+    assert (survivor.vote, survivor.seen_on, survivor.diary_exported) == ("S", date(2026, 11, 8), True)

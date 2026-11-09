@@ -762,3 +762,64 @@ def test_coming_soon_calendar(client, session, cinema):
     assert "<h2>Dicembre 2026</h2>" in december and f'href="/film/{avengers.id}"' in december
     assert 'aria-label="Mese successivo"' not in december  # no releases later
     assert "<h2>Ottobre 2026</h2>" in client.get("/in-uscita", params={"vista": "calendario", "mese": "2025-01"}).text
+
+
+def test_mark_a_film_seen_and_choose_the_cinema(client, session, cinema):
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    unical = Cinema(slug="unical", name="Cinema Unical (Rende)", url="https://unical.example")
+    session.add_all([garden, unical])
+    session.commit()
+    film = add_film(session, "Clayface", "in_sala", [-2, 0], cinema, vote="V")
+    add_show(session, film, garden, TODAY - timedelta(days=1), time(21, 0))
+
+    box = client.post(f"/film/{film.id}/vote", data={"v": "S"}).text
+    session.expire_all()
+    seen = session.get(Film, film.id)
+    assert seen.vote == "S" and seen.seen_on == TODAY and seen.seen_cinema_id is None
+    assert 'class="btn-vote vote-opt-3 active"' in box and "Dove l'hai visto?" in box
+    # Only the cinemas that showed it lately, plus "Salta"
+    assert ">Andromeda River<" in box and ">Cinema Garden (Rende)<" in box and "Unical" not in box and ">Salta<" in box
+
+    box = client.post(f"/film/{film.id}/visto-dove", data={"cinema": "garden"}).text
+    assert "✓ Visto il 17 ottobre · Cinema Garden (Rende)" in box and "Dove l" not in box
+    # The card shows it too, without asking again
+    assert "✓ Visto il 17 ottobre · Cinema Garden (Rende)" in client.get("/").text
+
+    # Another vote takes the ✓ away, with its day and cinema
+    client.post(f"/film/{film.id}/vote", data={"v": "V"})
+    session.expire_all()
+    film = session.get(Film, film.id)
+    assert film.vote == "V" and film.seen_on is None and film.seen_cinema_id is None
+
+
+def test_seen_page_and_letterboxd_diary(client, session, cinema):
+    seen = add_film(session, "Frankie", "uscito", [], cinema, vote="S", seen_on=date(2026, 10, 3), tmdb_id=10,
+                    tmdb_title="Frankie e le creature", tmdb_match_status="abbinato", year=2026)
+    add_film(session, "Incerto", "uscito", [], cinema, vote="S", seen_on=date(2026, 10, 9))  # no TMDB match
+    add_film(session, "Voglio", "uscito", [], cinema, vote="V", tmdb_id=11, tmdb_match_status="abbinato")
+
+    page = client.get("/visti").text
+    assert "Da mettere nel diario" in page and "1 film senza abbinamento TMDB" in page
+    assert page.index("Incerto") < page.index("Frankie e le creature")  # latest first
+    assert 'href="/visti"' in page and ">Visti" in page
+
+    csv = client.get("/visti/diario.csv").text
+    assert csv.splitlines() == ["tmdbID,Title,Year,WatchedDate", "10,Frankie e le creature,2026,2026-10-03"]
+    # A seen film is not in the watchlist any more
+    assert "Frankie" not in client.get("/watchlist").text
+
+    # Fix the day and the cinema
+    resp = client.post(f"/film/{seen.id}/visto", data={"seen_on": "2026-10-04", "cinema": "andromeda"}, follow_redirects=False)
+    assert resp.status_code == 303
+    session.expire_all()
+    film = session.get(Film, seen.id)
+    assert film.seen_on == date(2026, 10, 4) and film.seen_cinema_id == cinema.id
+
+    client.post("/visti/esportati", data={"film_ids": [seen.id]})
+    session.expire_all()
+    assert session.get(Film, seen.id).diary_exported
+    assert client.get("/visti/diario.csv").text.splitlines() == ["tmdbID,Title,Year,WatchedDate"]
+    assert "Nel diario di Letterboxd" in client.get("/visti").text
+    client.post(f"/film/{seen.id}/diario-di-nuovo")
+    session.expire_all()
+    assert not session.get(Film, seen.id).diary_exported
