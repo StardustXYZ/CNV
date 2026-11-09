@@ -1,0 +1,28 @@
+{# "In uscita" as a month calendar: each film on its first date. Expects `month` (ReleaseMonth) and `q`. #}
+{% set extra = "&q=" ~ (q | urlencode) if q else "" %}
+<div class="month-nav">
+    {% if month.prev %}<a href="/in-uscita?vista=calendario&amp;mese={{ month.prev }}{{ extra }}" class="btn" aria-label="Mese precedente">‹</a>{% else %}<span class="btn disabled" aria-hidden="true">‹</span>{% endif %}
+    <h2>{{ month.title | capitalize }}</h2>
+    {% if month.next %}<a href="/in-uscita?vista=calendario&amp;mese={{ month.next }}{{ extra }}" class="btn" aria-label="Mese successivo">›</a>{% else %}<span class="btn disabled" aria-hidden="true">›</span>{% endif %}
+</div>
+<div class="release-calendar">
+    {% for name in WEEKDAYS %}<div class="cal-head">{{ name }}</div>{% endfor %}
+    {% for week in month.weeks %}{% for d in week %}
+    <div class="cal-day{% if d.month != month.first.month %} other-month{% endif %}{% if d == today %} today{% endif %}{% if d < today %} past{% endif %}">
+        <span class="cal-num">{{ d.day }}</span>
+        {% for card in month.releases.get(d, []) %}
+        {% set film = card.film %}
+        <a href="/film/{{ film.id }}" class="cal-film" title="{{ card.title }}">
+            {% if film.poster_url and film.is_tmdb_confirmed %}<img src="{{ film.poster_url }}" alt="" loading="lazy">{% else %}<span class="cal-placeholder">🎬</span>{% endif %}
+            <span class="cal-title">{{ card.title }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endfor %}{% endfor %}
+</div>
+{% if month.undated %}
+<h3 class="section-title undated-title">Data da definire</h3>
+<ul class="undated-list">
+    {% for card in month.undated %}<li><a href="/film/{{ card.film.id }}" class="film-title-link">{{ card.title }}</a></li>{% endfor %}
+</ul>
+{% endif %}

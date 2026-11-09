@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.engine import get_db
-from app.db.models import Base, Cinema, Film, FilmAlias, Showtime
+from app.db.models import Base, Cinema, ComingSoon, Film, FilmAlias, Showtime
 from app.main import create_app
 from app.web import routes
 from app.services.tmdb import TmdbMovie
@@ -733,3 +733,32 @@ def test_notice_when_a_cinema_site_did_not_answer(client, session, cinema):
     assert 'class="notice not-updated"' in client.get("/cinema/garden").text
     assert 'class="notice not-updated"' not in client.get("/cinema/andromeda").text
     assert 'class="notice not-updated"' not in client.get("/", params={"cinema": "andromeda"}).text
+
+
+def test_coming_soon_calendar(client, session, cinema):
+    avengers = add_film(session, "Avengers", "in_uscita", [], cinema)
+    add_show(session, avengers, cinema, date(2026, 12, 16), time(20, 30))
+    matrix = add_film(session, "Matrix", "in_uscita", [], cinema)
+    add_show(session, matrix, cinema, date(2026, 10, 26), time(19, 15))
+    add_film(session, "Senza data", "in_uscita", [], cinema)
+    session.add(ComingSoon(film_id=session.query(Film).filter_by(raw_title="Senza data").one().id,
+                           cinema_id=cinema.id, source="andromeda"))
+    session.commit()
+
+    page = client.get("/in-uscita", params={"vista": "calendario"}).text
+    main = page[page.index("<main"):]
+    assert "<h2>Ottobre 2026</h2>" in main  # this month by default (today is 17/10)
+    assert 'class="chip active">Calendario<' in main
+    # Monday 28/9 to Sunday 1/11: five weeks of 7 days
+    assert main.count('class="cal-day') == 35 and main.count('class="cal-head"') == 7
+    day26 = main.split('<span class="cal-num">26</span>', 1)[1].split('class="cal-day', 1)[0]
+    assert f'href="/film/{matrix.id}"' in day26 and "Matrix" in day26
+    assert "Avengers" not in main.split("Data da definire")[0]  # December, not this month
+    assert "Senza data" in main.split("Data da definire", 1)[1]
+    assert 'aria-label="Mese precedente"' not in main  # nothing before this month
+    assert 'href="/in-uscita?vista=calendario&amp;mese=2026-11"' in main
+
+    december = client.get("/in-uscita", params={"vista": "calendario", "mese": "2026-12"}).text
+    assert "<h2>Dicembre 2026</h2>" in december and f'href="/film/{avengers.id}"' in december
+    assert 'aria-label="Mese successivo"' not in december  # no releases later
+    assert "<h2>Ottobre 2026</h2>" in client.get("/in-uscita", params={"vista": "calendario", "mese": "2025-01"}).text
