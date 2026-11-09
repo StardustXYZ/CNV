@@ -22,6 +22,9 @@
             {% endif %}
             <a href="/film/{{ film.id }}/abbinamento" class="ext-link change-match" title="Locandina o titolo sbagliati? Cambia l'abbinamento TMDB">{% if film.is_tmdb_confirmed %}cambia{% else %}abbina{% endif %}</a>
         </div>
+        {% if mode == "oggi" and card.in_sala_since %}
+        <p class="small in-sala-since" title="Primo giorno di programmazione a Cosenza e Rende">In sala dal {{ card.in_sala_since | data_lunga(today) }}</p>
+        {% endif %}
 
         {% if mode == "oggi" %}
             {% if card.next_shows %}

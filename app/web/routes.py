@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -167,6 +168,7 @@ class FilmCard:
     first_date: date | None = None  # first known date anywhere
     has_shows: bool = False  # has screenings that have not started yet
     exit_date: date | None = None  # when a film no longer programmed becomes "uscito"
+    in_sala_since: date | None = None  # first day it was screened in a cinema of the area
 
     @property
     def title(self) -> str:
@@ -242,6 +244,15 @@ def _film_cards(db: Session, films: list[Film], now: datetime) -> list[FilmCard]
         card.cinemas = releases
         card.first_date = min((c.first_date for c in releases if c.first_date), default=None)
     return list(cards.values())
+
+
+def _first_show_days(db: Session, film_ids: list[int]) -> dict[int, date]:
+    """First day each film was screened in a cinema of the area (its "uscita" here)."""
+    if not film_ids:
+        return {}
+    return dict(
+        db.query(Showtime.film_id, func.min(Showtime.date)).filter(Showtime.film_id.in_(film_ids)).group_by(Showtime.film_id)
+    )
 
 
 def _exit_date(film: Film) -> date | None:
@@ -369,8 +380,14 @@ def index(request: Request, voto: str | None = Query(None), db: Session = Depend
     else:
         voto = None
     cards = _film_cards(db, query.all(), _now())
-    # Films still showing today first, then by their next day, then alphabetical
-    showing = sorted((c for c in cards if c.has_shows), key=lambda c: (c.next_day, c.title.lower()))
+    since = _first_show_days(db, [c.film.id for c in cards])
+    for card in cards:
+        card.in_sala_since = since.get(card.film.id)
+    # Most recent arrivals first, then alphabetical
+    showing = sorted(
+        (c for c in cards if c.has_shows),
+        key=lambda c: (-(c.in_sala_since or date.min).toordinal(), c.title.lower()),
+    )
     gone = sorted((c for c in cards if not c.has_shows), key=lambda c: c.title.lower())
     for card in gone:
         card.exit_date = _exit_date(card.film)
