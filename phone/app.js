@@ -545,7 +545,7 @@ function pageVisti() {
     if (!films.length) {
         return html + `<p class="empty-state">Nessun film visto per ora.<br>Quando vedi un film al cinema, segnalo con <strong>✓</strong>.</p>`;
     }
-    return html + `<ul class="seen-list">${films.map((f) => {
+    return html + seenStats(films) + `<h2 class="section-title">Elenco</h2><ul class="seen-list">${films.map((f) => {
         const info = seen[f.id] || {};
         const options = `<option value="">Cinema?</option>` + DATA.cinemas.map((c) =>
             `<option value="${esc(c.slug)}"${c.slug === info.cinema ? " selected" : ""}>${esc(c.name)}</option>`).join("");
@@ -560,6 +560,45 @@ function pageVisti() {
             </div>
             <span class="small">${state}</span></div></li>`;
     }).join("")}</ul>`;
+}
+
+/** Statistics of the films seen: summary numbers and bars by month, cinema and genre. */
+function seenStats(films) {
+    if (!films.length) return "";
+    const count = (keys) => keys.reduce((m, k) => m.set(k, (m.get(k) || 0) + 1), new Map());
+    const ranked = (map, last) => [...map].filter(([k]) => k !== last)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).concat(map.has(last) ? [[last, map.get(last)]] : []);
+    const today = isoDate(new Date());
+    const months = count(films.map((f) => (seen[f.id] || {}).date).filter(Boolean).map((d) => d.slice(0, 7)));
+    // From the first month with a film seen to this one, at most the last 12 (months counted from year 0)
+    const index = (ym) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
+    const thisMonth = index(today);
+    const firstMonth = Math.max(Math.min(thisMonth, ...[...months.keys()].map(index)), thisMonth - 11);
+    const byMonth = [];
+    for (let i = firstMonth; i <= thisMonth; i++) {
+        const key = `${Math.floor(i / 12)}-${pad(i % 12 + 1)}`;
+        byMonth.push([`${MONTHS[i % 12].slice(0, 3)} ${Math.floor(i / 12)}`, months.get(key) || 0]);
+    }
+    const byCinema = ranked(count(films.map((f) => (seen[f.id] || {}).cinema ? cinemaName(seen[f.id].cinema) : "Non indicato")), "Non indicato");
+    const byGenre = ranked(count(films.map((f) => f.genre || "Non noto")), "Non noto");
+    const top = (rows, last) => (rows.find(([k]) => k !== last) || [null])[0];
+    const bars = (rows) => {
+        const max = Math.max(1, ...rows.map(([, n]) => n));
+        return rows.map(([label, n]) => `<div class="stat-bar" title="${esc(label)}: ${n} film">
+            <span class="stat-label">${esc(label)}</span>
+            <span class="stat-track"><span class="stat-fill" style="width: ${(n / max * 100).toFixed(1)}%"></span></span>
+            <span class="stat-value">${n}</span></div>`).join("");
+    };
+    const tile = (value, caption, cls = "stat-number") => `<div class="stat-tile"><span class="${cls}">${esc(String(value))}</span><span class="stat-caption">${caption}</span></div>`;
+    const topCinema = top(byCinema, "Non indicato"), topGenre = top(byGenre, "Non noto");
+    return `<section class="stats" aria-label="Statistiche"><h2 class="section-title">Statistiche</h2>
+        <div class="stat-tiles">${tile(films.length, "film visti")}${tile(months.get(today.slice(0, 7)) || 0, "questo mese")}
+            ${topCinema ? tile(topCinema, "cinema più frequentato", "stat-text") : ""}${topGenre ? tile(topGenre, "genere più visto", "stat-text") : ""}</div>
+        <div class="stat-groups">
+            <div class="stat-group"><h3>Al mese</h3>${bars(byMonth)}</div>
+            <div class="stat-group"><h3>Per cinema</h3>${bars(byCinema)}</div>
+            <div class="stat-group"><h3>Per genere</h3>${bars(byGenre)}</div>
+        </div></section>`;
 }
 
 function diaryCsv() {
@@ -646,8 +685,12 @@ function renderNav(ctx, active) {
     const watch = toExport().length;
     const links = [["sala", tabHash("/"), "In sala", inSala], ["uscita", tabHash("/uscita"), "In uscita", inUscita],
         ["watchlist", "#/watchlist", "Watchlist", watch], ["visti", "#/visti", "Visti", toDiary().length], ["voti", "#/voti", "Voti", 0]];
-    document.getElementById("nav-links").innerHTML = links.map(([key, href, label, n]) =>
+    const nav = document.getElementById("nav-links");
+    nav.innerHTML = links.map(([key, href, label, n]) =>
         `<a href="${href}" class="${active === key ? "active" : ""}">${label}${n ? ` <span class="count">${n}</span>` : ""}</a>`).join("");
+    // The menu scrolls sideways on narrow screens: keep the current page in view
+    const current = nav.querySelector("a.active");
+    if (current) nav.scrollLeft = Math.max(0, current.offsetLeft - nav.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2);
 }
 
 function renderMenu(ctx, active) {

@@ -1,0 +1,24 @@
+{# Statistics of the films seen: summary numbers and bars by month, cinema and genre. Expects `stats`. #}
+{% macro bars(rows, top) %}
+{% for r in rows %}
+<div class="stat-bar" title="{{ r.label }}: {{ r.count }} film">
+    <span class="stat-label">{{ r.label }}</span>
+    <span class="stat-track"><span class="stat-fill" style="width: {{ (r.count / top * 100) | round(1) }}%"></span></span>
+    <span class="stat-value">{{ r.count }}</span>
+</div>
+{% endfor %}
+{% endmacro %}
+<section class="stats" aria-label="Statistiche">
+    <h2 class="section-title">Statistiche</h2>
+    <div class="stat-tiles">
+        <div class="stat-tile"><span class="stat-number">{{ stats.total }}</span><span class="stat-caption">film visti</span></div>
+        <div class="stat-tile"><span class="stat-number">{{ stats.this_month }}</span><span class="stat-caption">questo mese</span></div>
+        {% if stats.top_cinema %}<div class="stat-tile"><span class="stat-text">{{ stats.top_cinema }}</span><span class="stat-caption">cinema più frequentato</span></div>{% endif %}
+        {% if stats.top_genre %}<div class="stat-tile"><span class="stat-text">{{ stats.top_genre }}</span><span class="stat-caption">genere più visto</span></div>{% endif %}
+    </div>
+    <div class="stat-groups">
+        <div class="stat-group"><h3>Al mese</h3>{{ bars(stats.by_month, stats.max_month) }}</div>
+        <div class="stat-group"><h3>Per cinema</h3>{{ bars(stats.by_cinema, stats.by_cinema[0].count) }}</div>
+        <div class="stat-group"><h3>Per genere</h3>{{ bars(stats.by_genre, stats.by_genre[0].count) }}</div>
+    </div>
+</section>

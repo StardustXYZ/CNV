@@ -8,7 +8,9 @@ const POSTERS = "cnv-posters";
 const DATA = "cnv-data";
 
 self.addEventListener("install", (event) => {
-    event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+    // Straight from the server: a copy in the browser's HTTP cache could be the previous version
+    const fresh = SHELL.map((url) => new Request(url, { cache: "reload" }));
+    event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {

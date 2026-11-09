@@ -8,6 +8,7 @@
     --text: #e0e0e0;
     --text-muted: #9a9a9a;
     --accent: #bb86fc;
+    --chart-bar: #a874f5;  /* accent one step darker: passes the chart checks on the dark surfaces */
     --green: #4caf50;
     --yellow: #ff9800;
     --red: #f44336;
@@ -471,3 +472,19 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
     max-width: 100%;
 }
 .btn-small { padding: 0.1rem 0.5rem; font-size: 0.75rem; }
+
+/* ---- Statistics of the films seen ---- */
+.stats { margin: 1.25rem 0 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.6rem; }
+.stat-tile { background: var(--surface); border-radius: var(--radius); padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.stat-number { font-size: 1.7rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-text { font-size: 0.95rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.stat-caption { font-size: 0.75rem; color: var(--text-muted); }
+.stat-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.6rem; }
+.stat-group { background: var(--surface); border-radius: var(--radius); padding: 0.7rem 0.9rem; min-width: 0; }
+.stat-group h3 { font-size: 0.85rem; margin-bottom: 0.4rem; }
+.stat-bar { display: grid; grid-template-columns: minmax(4.5rem, 42%) 1fr 2.5ch; align-items: center; gap: 0.5rem; font-size: 0.8rem; padding: 3px 0; }
+.stat-label { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-track { height: 10px; }
+.stat-fill { display: block; height: 100%; background: var(--chart-bar); border-radius: 0 4px 4px 0; }
+.stat-value { text-align: right; font-variant-numeric: tabular-nums; }

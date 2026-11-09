@@ -33,7 +33,10 @@
 </section>
 {% endif %}
 
+{% if stats %}{% include "_seen_stats.html" %}{% endif %}
+
 {% if seen %}
+<h2 class="section-title">Elenco</h2>
 <ul class="seen-list">
     {% for film in seen %}
     <li class="seen-row">
