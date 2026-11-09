@@ -24,7 +24,7 @@ from app.services.backup import list_backups
 from app.services.matching import STATUS_NOT_FOUND, STATUS_REVIEW, confirm_match, search_manual
 from app.services.runner import SyncAlreadyRunning, is_sync_running, run_full_sync
 from app.services.schedule import programme_day, show_datetime, show_end
-from app.services.sync import is_event_film
+from app.services.sync import cinemas_not_updated, is_event_film
 from app.services.titles import normalize_title
 from app.services.tmdb import TmdbClient
 
@@ -428,8 +428,10 @@ def index(
     for card in gone:
         card.exit_date = _exit_date(card.film)
     filters = {"voto": voto, "genere": genere, "cinema": cinema, "q": q}
+    not_updated = [(c, d) for c, d in cinemas_not_updated(db) if cinema in (None, c.slug)]
     return _render(
         request, db, "index.html", "in_sala", cards=showing, gone=gone, voto=voto, filters=filters, genres=genres,
+        not_updated=not_updated,
         filter_url=lambda **changes: _filter_url("/", filters, **changes),
     )
 
@@ -490,6 +492,7 @@ def cinema_page(request: Request, slug: str, giorno: str | None = Query(None), d
     return _render(
         request, db, "cinema.html", f"cinema:{slug}",
         cinema=cinema, days=days, selected=selected, first_day=first_day, films=films, today_over=today_over,
+        not_updated=[(c, d) for c, d in cinemas_not_updated(db) if c.id == cinema.id],
     )
 
 

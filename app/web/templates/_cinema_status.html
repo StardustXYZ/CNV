@@ -1,0 +1,8 @@
+{# Cinemas whose site did not answer at the last sync. Expects `not_updated`: [(cinema, last good day)]. #}
+{% if not_updated %}
+<section class="notice not-updated">
+    ⚠️ All'ultimo aggiornamento non ha risposto il sito di
+    {% for c, last_ok in not_updated %}<a href="{{ c.url }}" target="_blank" rel="noopener"><b>{{ c.name }}</b></a>{% if last_ok %} (orari del {{ last_ok | data_lunga(today) }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}:
+    {% if not_updated | length == 1 %}i suoi orari potrebbero essere cambiati{% else %}i loro orari potrebbero essere cambiati{% endif %}. Controlla sul sito del cinema prima di andare.
+</section>
+{% endif %}

@@ -957,3 +957,26 @@ async def test_leaving_theaters_makes_a_return_news_again(db):
     await _sync_day(db, date(2026, 12, 10), [ShowtimeData("andromeda", "DUNE", date(2026, 12, 10), time(21, 0))])
     db.refresh(dune)
     assert dune.status == "in_sala" and dune.in_sala_noticed is False  # the notice shows again
+
+
+def test_cinemas_not_updated(db):
+    from app.db.models import Cinema, SyncRun
+    from app.services.sync import cinemas_not_updated
+
+    ok, broken, never, empty = (Cinema(slug=s, name=s, url="https://x") for s in ("ok", "broken", "never", "empty"))
+    db.add_all([ok, broken, never, empty])
+    db.flush()
+    day = date(2026, 11, 9)
+    db.add_all([
+        SyncRun(sync_date=day - timedelta(days=1), cinema_id=ok.id, status="error", created_at=datetime(2026, 11, 8, 2)),
+        SyncRun(sync_date=day, cinema_id=ok.id, status="ok", created_at=datetime(2026, 11, 9, 2)),  # fine again
+        SyncRun(sync_date=day - timedelta(days=2), cinema_id=broken.id, status="ok", created_at=datetime(2026, 11, 7, 2)),
+        SyncRun(sync_date=day, cinema_id=broken.id, status="error", created_at=datetime(2026, 11, 9, 2)),
+        SyncRun(sync_date=day, cinema_id=never.id, status="error", created_at=datetime(2026, 11, 9, 2)),
+        SyncRun(sync_date=day, cinema_id=empty.id, status="empty_anomaly", created_at=datetime(2026, 11, 9, 2)),
+    ])
+    db.commit()
+
+    assert [(c.slug, d) for c, d in cinemas_not_updated(db)] == [
+        ("broken", day - timedelta(days=2)), ("empty", None), ("never", None),
+    ]

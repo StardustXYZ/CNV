@@ -12,6 +12,8 @@
     </nav>
 </header>
 
+{% include "_cinema_status.html" %}
+
 <form class="filters" method="get" action="/" role="search">
     {% if voto %}<input type="hidden" name="voto" value="{{ voto }}">{% endif %}
     <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Cerca un titolo" aria-label="Cerca un titolo">

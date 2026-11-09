@@ -240,6 +240,18 @@ function updateInSalaSeen() {
     save("cnv.inSalaSeen", [...inSalaSeen]);
 }
 
+/** Notice for cinemas whose site did not answer at the last update (all of them, or the given one). */
+function notUpdatedNotice(ctx, only = null) {
+    const list = Object.entries(DATA.not_updated || {}).filter(([slug]) => CINEMAS.has(slug) && (!only || slug === only));
+    if (!list.length) return "";
+    const names = list.map(([slug, lastOk]) => {
+        const c = CINEMAS.get(slug);
+        return `<a href="${esc(c.url)}" target="_blank" rel="noopener"><b>${esc(c.name)}</b></a>${lastOk ? ` (orari del ${longDate(lastOk, ctx.day)})` : ""}`;
+    }).join(", ");
+    return `<section class="notice not-updated">⚠️ All'ultimo aggiornamento non ha risposto il sito di ${names}:
+        ${list.length === 1 ? "i suoi orari potrebbero essere cambiati" : "i loro orari potrebbero essere cambiati"}. Controlla sul sito del cinema prima di andare.</section>`;
+}
+
 // ------------------------------------------------------------------ pages
 
 /** The search box: the words typed appear in the title (TMDB or the cinema's), ignoring accents. */
@@ -270,6 +282,7 @@ function pageInSala(ctx, params) {
     const options = (list, selected, all) => `<option value="">${all}</option>` +
         list.map(([value, label]) => `<option value="${esc(value)}"${value === selected ? " selected" : ""}>${esc(label)}</option>`).join("");
     return `<header class="page-header"><h1>Film in sala</h1><nav class="chips">${chips}</nav></header>
+        ${notUpdatedNotice(ctx, cinema)}
         <div class="filters" role="search">${searchBox(q)}
             <select data-filter="genere" aria-label="Genere">${options(genres.map((g) => [g, g]), genere, "Tutti i generi")}</select>
             <select data-filter="cinema" aria-label="Cinema">${options(DATA.cinemas.map((c) => [c.slug, c.name]), cinema, "Tutti i cinema")}</select>
@@ -341,7 +354,8 @@ function pageCinema(ctx, slug, params) {
 
     let html = `<header class="page-header"><h1>${esc(cinema.name)}</h1>
         <a href="${esc(cinema.url)}" target="_blank" rel="noopener" class="btn">Sito del cinema ↗</a>
-        <p class="subtitle">Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.</p></header>`;
+        <p class="subtitle">Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.</p></header>
+        ${notUpdatedNotice(ctx, slug)}`;
     if (!selected) {
         return html + `<p class="empty-state">Il sito del cinema non ha spettacoli in programma.<br>
             <a href="${esc(cinema.url)}" target="_blank" rel="noopener">Controlla sul sito del cinema ↗</a></p>`;

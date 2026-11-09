@@ -712,3 +712,24 @@ def test_coming_soon_search(client, session, cinema):
     page = client.get("/in-uscita", params={"q": "aveng"}).text.split("</form>", 1)[1]
     assert "Avengers" in page and "Matrix" not in page
     assert "Nessun film in uscita con questo titolo." in client.get("/in-uscita", params={"q": "zzz"}).text
+
+
+def test_notice_when_a_cinema_site_did_not_answer(client, session, cinema):
+    from app.db.models import SyncRun
+
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    session.add(garden)
+    session.commit()
+    add_film(session, "Clayface", "in_sala", [0], cinema)
+    session.add_all([
+        SyncRun(sync_date=TODAY - timedelta(days=1), cinema_id=garden.id, status="ok", created_at=NOW - timedelta(days=1)),
+        SyncRun(sync_date=TODAY, cinema_id=garden.id, status="error", error_message="timeout", created_at=NOW),
+        SyncRun(sync_date=TODAY, cinema_id=cinema.id, status="ok", created_at=NOW),
+    ])
+    session.commit()
+
+    notice = client.get("/").text.split('class="notice not-updated"', 1)[1].split("</section>", 1)[0]
+    assert "Cinema Garden (Rende)" in notice and "orari del 16 ottobre" in notice and "Andromeda" not in notice
+    assert 'class="notice not-updated"' in client.get("/cinema/garden").text
+    assert 'class="notice not-updated"' not in client.get("/cinema/andromeda").text
+    assert 'class="notice not-updated"' not in client.get("/", params={"cinema": "andromeda"}).text
