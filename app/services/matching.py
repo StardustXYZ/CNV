@@ -380,6 +380,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     survivor.is_event = survivor.is_event and other.is_event
     survivor.letterboxd_exported = survivor.letterboxd_exported or other.letterboxd_exported
     survivor.in_sala_noticed = survivor.in_sala_noticed or other.in_sala_noticed  # notice seen on either copy
+    survivor.in_sala_pushed = survivor.in_sala_pushed or other.in_sala_pushed  # notified for either copy
     if survivor.vote == "S":
         survivor.seen_on = survivor.seen_on or other.seen_on
         survivor.seen_cinema_id = survivor.seen_cinema_id or other.seen_cinema_id

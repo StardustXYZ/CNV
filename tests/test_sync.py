@@ -947,12 +947,12 @@ async def test_booking_link_is_saved_and_updated(db):
 async def test_leaving_theaters_makes_a_return_news_again(db):
     await _sync_day(db, date(2026, 10, 1), [ShowtimeData("andromeda", "DUNE", date(2026, 10, 1), time(21, 0))])
     dune = db.query(Film).filter_by(normalized_title="dune").one()
-    dune.vote, dune.in_sala_noticed = "V", True  # notice already seen
+    dune.vote, dune.in_sala_noticed, dune.in_sala_pushed = "V", True, True  # notice seen, phone notified
     db.commit()
 
     await _sync_day(db, date(2026, 10, 20), [ShowtimeData("andromeda", "ALTRO", date(2026, 10, 20), time(21, 0))])
     db.refresh(dune)
-    assert dune.status == "uscito" and dune.in_sala_noticed is False
+    assert dune.status == "uscito" and dune.in_sala_noticed is False and dune.in_sala_pushed is False
 
     await _sync_day(db, date(2026, 12, 10), [ShowtimeData("andromeda", "DUNE", date(2026, 12, 10), time(21, 0))])
     db.refresh(dune)

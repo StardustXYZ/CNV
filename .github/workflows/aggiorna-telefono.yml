@@ -6,6 +6,7 @@
 # 4. costruisce il sito (phone/ + data.json) e lo pubblica su GitHub Pages
 #
 # Serve: repository pubblico, segreto TMDB_API_KEY, Settings -> Pages -> Source: GitHub Actions.
+# Notifiche (facoltative): segreti VAPID_PRIVATE_KEY e PUSH_SUBSCRIPTION (il codice della pagina Voti).
 name: Aggiorna CNV per il telefono
 
 on:
@@ -16,6 +17,11 @@ on:
     - cron: "17 1 * * *"   # 02:17 in Italia (03:17 con l'ora legale)
     - cron: "47 3 * * *"   # 04:47 in Italia (05:47 con l'ora legale)
   workflow_dispatch:         # e a mano: Actions -> Aggiorna CNV per il telefono -> Run workflow
+    inputs:
+      prova:
+        description: "Manda una notifica di prova anche senza film nuovi"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # salvare il database nel ramo "dati"
@@ -66,12 +72,15 @@ jobs:
           python-version: "3.12"
 
       - name: Installa CNV
-        run: pip install -e .
+        run: pip install -e ".[push]"
 
       - name: Sync (cinema, prossimamente, TMDB)
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: python -m app.sync
+
+      - name: Prepara la notifica (film nuovi in sala)
+        run: python -m app.push prepare --out "$RUNNER_TEMP/notifica.json" ${{ inputs.prova && '--prova' || '' }}
 
       - name: Salva il database nel ramo dati
         run: |
@@ -96,6 +105,13 @@ jobs:
       - name: Pubblica su GitHub Pages
         id: pubblica
         uses: actions/deploy-pages@v5
+
+      # Dopo la pubblicazione, così toccando la notifica si aprono già i dati nuovi
+      - name: Invia la notifica al telefono
+        env:
+          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: python -m app.push send "$RUNNER_TEMP/notifica.json"
 
       # In un repository pubblico GitHub mette in pausa gli orari programmati dopo 60 giorni
       # senza attività. Riattivare il workflow a ogni giro azzera il conto: non serve

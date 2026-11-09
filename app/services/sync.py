@@ -680,7 +680,9 @@ async def run_sync(
             target_status = "in_sala"
 
         if target_status != "in_sala":
-            film.in_sala_noticed = False  # if it comes back to theaters, that is news again
+            # If it comes back to theaters, that is news again (notice and phone notification)
+            film.in_sala_noticed = False
+            film.in_sala_pushed = False
 
         # Apply state transitions
         if old_status == "uscito" and target_status == "in_sala":

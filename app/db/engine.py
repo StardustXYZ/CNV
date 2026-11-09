@@ -55,6 +55,10 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN in_sala_noticed BOOLEAN DEFAULT 0"))
                 # V films already in sala are not news: only the next arrivals get the notice
                 conn.execute(text("UPDATE films SET in_sala_noticed = 1 WHERE status = 'in_sala' AND vote = 'V'"))
+            if "in_sala_pushed" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN in_sala_pushed BOOLEAN DEFAULT 0"))
+                # Films already in sala are not news: only the next arrivals are notified
+                conn.execute(text("UPDATE films SET in_sala_pushed = 1 WHERE status = 'in_sala'"))
             if "seen_on" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN seen_on DATE"))
             if "seen_cinema_id" not in columns:

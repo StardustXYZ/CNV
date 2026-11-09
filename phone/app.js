@@ -15,6 +15,9 @@ const VOTE_PRIORITY = { "S": 3, "V": 2, "?": 1 }; // two merged copies keep the 
 const LATE_SHOW_CUTOFF = "06:00"; // shows listed before this hour run after midnight
 const STALE_AFTER_HOURS = 30;
 const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
+const DATA_CACHE = "cnv-data";       // same name as in sw.js: the votes are copied there for the notifications
+// Public half of the key GitHub signs the notifications with (the private one is the VAPID_PRIVATE_KEY secret)
+const PUSH_PUBLIC_KEY = "BPToHyyFGWKFimhXJ3M-oEXAhpb_JrrJiJHthg7mH6WS1yAVAHnAxtX9civmtjfUhBwpOy-yisb4B4GNrsTr5rA";
 
 let DATA = null;
 let FILMS = new Map();
@@ -24,6 +27,7 @@ let exported = load("cnv.exported", {});  // film id -> date the CSV was importe
 let seen = load("cnv.seen", {});          // film id -> {date, cinema}: films marked ✓
 let diary = load("cnv.diary", {});        // film id -> date the diary CSV was imported on Letterboxd
 let askCinemaFor = null;                  // film just marked ✓: its box asks where it was seen
+let pushState = { supported: false, code: null }; // notifications: code to copy into GitHub when active
 let shownPage = "";                       // HTML of the page on screen, for the minute refresh
 let swipeDirection = "";                  // "next" | "prev": slide-in of the page drawn after a swipe
 let inSalaSeen = new Set();               // V films in sala whose notice was seen (see updateInSalaSeen)
@@ -36,6 +40,14 @@ function load(key, fallback) {
 }
 function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: not saved */ }
+    if (key === "cnv.votes") mirrorVotes(value);
+}
+/** A copy of the votes where the service worker can read them, to put the V films first in a notification. */
+function mirrorVotes(value) {
+    if (!("caches" in window)) return;
+    caches.open(DATA_CACHE)
+        .then((cache) => cache.put("votes.json", new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } })))
+        .catch(() => { /* notifications just won't highlight the V films */ });
 }
 /** Only V and ?: the old X ("non mi interessa") is dropped and the film goes back to "da votare". */
 function knownVotes(map) {
@@ -607,6 +619,61 @@ function diaryCsv() {
     return ["tmdbID,Title,Year,WatchedDate", ...rows].join("\n") + "\n";
 }
 
+/** The "Notifiche" box of the Voti page. */
+function pushBox() {
+    if (!pushState.supported) {
+        return `<section class="notice"><p><b>Notifiche</b>: questo browser non le supporta. Su Android usa Chrome e aggiungi CNV alla schermata Home.</p></section>`;
+    }
+    if (!pushState.code) {
+        return `<section class="export-box"><h2>Notifiche</h2>
+            <p class="small">Ti avviso quando un film nuovo arriva in sala, con i tuoi V in evidenza. Gratis, anche ad app chiusa.</p>
+            <div class="export-actions"><button class="btn btn-primary" data-action="push-enable">🔔 Attiva le notifiche</button></div></section>`;
+    }
+    return `<section class="export-box"><h2>Notifiche attive su questo telefono</h2>
+        <ol class="steps">
+            <li>Copia il codice qui sotto.</li>
+            <li>Su GitHub: Settings → Secrets and variables → Actions → New repository secret, nome <b>PUSH_SUBSCRIPTION</b>, incolla il codice. Serve anche il segreto <b>VAPID_PRIVATE_KEY</b> (la chiave nel file .env del PC).</li>
+            <li>Per provare: Actions → Aggiorna CNV per il telefono → Run workflow, con "Manda una notifica di prova".</li>
+        </ol>
+        <textarea class="push-code" readonly rows="4" aria-label="Codice per GitHub">${esc(pushState.code)}</textarea>
+        <div class="export-actions">
+            <button class="btn btn-primary" data-action="push-copy">📋 Copia il codice</button>
+            <button class="btn" data-action="push-disable">Disattiva</button>
+        </div></section>`;
+}
+
+/** Whether notifications can work here, and the code of the current subscription. */
+async function refreshPush() {
+    pushState.supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    if (!pushState.supported) return;
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    pushState.code = subscription ? JSON.stringify(subscription) : null;
+}
+
+function base64UrlToBytes(text) {
+    const base64 = (text + "=".repeat((4 - (text.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+async function enablePush() {
+    if (await Notification.requestPermission() !== "granted") {
+        alert("Senza il permesso le notifiche non possono arrivare. Puoi darlo dalle impostazioni del sito in Chrome.");
+        return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription()
+        || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(PUSH_PUBLIC_KEY) });
+    pushState.code = JSON.stringify(subscription);
+}
+
+async function disablePush() {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) await subscription.unsubscribe();
+    pushState.code = null;
+}
+
 function pageVoti() {
     const count = Object.keys(votes).length;
     return `<header class="page-header"><h1>I tuoi voti</h1>
@@ -615,7 +682,8 @@ function pageVoti() {
         <div class="backup-actions">
             <button class="btn btn-primary" data-action="export-votes">💾 Salva una copia dei voti</button>
             <label class="btn">📂 Ripristina da una copia<input type="file" accept="application/json,.json" data-action="import-votes"></label>
-        </div>`;
+        </div>
+        ${pushBox()}`;
 }
 
 // ------------------------------------------------------------------ navigation and rendering
@@ -765,6 +833,16 @@ document.addEventListener("click", (e) => {
     }
     const action = e.target.closest("[data-action]")?.dataset.action;
     const today = isoDate(new Date());
+    if (action === "push-enable" || action === "push-disable") {
+        (action === "push-enable" ? enablePush() : disablePush())
+            .then(render)
+            .catch((err) => alert(`Non riesco a ${action === "push-enable" ? "attivare" : "disattivare"} le notifiche (${err.message}).`));
+    }
+    if (action === "push-copy") {
+        navigator.clipboard.writeText(pushState.code || "")
+            .then(() => alert("Codice copiato: incollalo nel segreto PUSH_SUBSCRIPTION su GitHub."))
+            .catch(() => { document.querySelector(".push-code")?.select(); });
+    }
     if (action === "export-diary") download(`letterboxd_diario_${today}.csv`, "text/csv", diaryCsv());
     if (action === "mark-diary" && confirm("Hai importato il file su Letterboxd?")) {
         toDiary().forEach((f) => { diary[f.id] = today; });
@@ -954,11 +1032,12 @@ function start(data, offline) {
     FILMS = new Map(data.films.map((f) => [f.id, f]));
     CINEMAS = new Map(data.cinemas.map((c) => [c.slug, c]));
     applyMerges(data.merged);
-    save("cnv.votes", votes); // without the old X votes
+    save("cnv.votes", votes); // without the old X votes (and a copy for the notifications)
     updateInSalaSeen();
     render();
     showUpdated(offline);
     if (!offline) prunePosters();
+    refreshPush().then(() => { if (route().path === "/voti") render(); }).catch(() => { /* no notifications */ });
 }
 
 fetch("data.json", { cache: "no-cache" })
