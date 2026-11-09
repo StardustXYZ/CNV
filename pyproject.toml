@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+push = [
+    "pywebpush>=2.0",  # notifications on the phone, sent by GitHub Actions (app/push.py)
+]
 dev = [
     "pytest>=7.4",
     "pytest-asyncio>=0.23",

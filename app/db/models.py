@@ -62,6 +62,8 @@ class Film(Base):
     details_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # TMDB film runtime/genre belong to
     # The "now in sala" notice for a V film was seen (or the vote was given while in sala)
     in_sala_noticed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The phone was notified that it arrived in theaters (app/push.py)
+    in_sala_pushed: Mapped[bool] = mapped_column(Boolean, default=False)
     # Vote "S" (seen, ✓): when and where, and whether it went into the Letterboxd diary
     seen_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     seen_cinema_id: Mapped[int | None] = mapped_column(ForeignKey("cinemas.id"), nullable=True)

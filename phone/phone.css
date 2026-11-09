@@ -22,3 +22,6 @@ body { overflow-x: hidden; }
 .nav-links { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0.25rem 0.9rem; }
 .nav-links::-webkit-scrollbar { display: none; }
 .nav-links a { white-space: nowrap; }
+
+/* Notifications: the code to copy into GitHub */
+.push-code { width: 100%; margin: 0.5rem 0; padding: 0.5rem; font: 0.75rem/1.4 ui-monospace, monospace; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; resize: vertical; word-break: break-all; }
