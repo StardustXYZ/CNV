@@ -38,7 +38,7 @@
         {% for card in gone %}
         {% set film = card.film %}
         <li>
-            <span class="gone-title">{{ card.title }}</span>
+            <a href="/film/{{ film.id }}" class="gone-title film-title-link">{{ card.title }}</a>
             <span class="small">
                 {% if film.last_seen_date %}visto l'ultima volta {{ film.last_seen_date | giorno(today) }}{% endif %}
                 {% if card.exit_date %} · uscito dalle sale dal {{ card.exit_date | data_lunga(today) }} se non ricompare{% endif %}

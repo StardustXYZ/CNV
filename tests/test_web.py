@@ -619,3 +619,45 @@ def test_voting_v_a_film_already_in_sala_needs_no_notice(client, session, cinema
     session.expire_all()
     assert session.get(Film, film.id).in_sala_noticed
     assert 'id="arrivals"' not in client.get("/").text
+
+
+def test_film_page_lists_every_show_by_cinema_and_day(client, session, cinema):
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    session.add(garden)
+    session.commit()
+    clay = add_film(session, "Clayface", "in_sala", [], cinema, tmdb_id=1, tmdb_title="Clayface",
+                    tmdb_match_status="abbinato", runtime=100, genre="Horror", details_tmdb_id=1, vote="V")
+    _show(session, clay, cinema, TODAY - timedelta(days=3), time(21, 0))  # first day here
+    _show(session, clay, cinema, TODAY, time(18, 0))  # started before 20:00: hidden
+    _show(session, clay, cinema, TODAY, time(22, 0), "Sala 2", booking="https://buy/today")
+    _show(session, clay, cinema, TODAY + timedelta(days=2), time(17, 30), "Sala 1")
+    _show(session, clay, garden, TODAY, time(20, 30), "Sala A", booking="https://buy/garden")
+    other = add_film(session, "Altro", "in_sala", [], cinema)
+    _show(session, other, cinema, TODAY, time(21, 0))
+
+    main = client.get(f"/film/{clay.id}").text.split("<main", 1)[1]
+    assert "<h1>Clayface</h1>" in main and "<span>Horror</span>" in main and "1h 40m" in main
+    assert "In sala dal 14 ottobre" in main
+    assert 'class="btn-vote vote-opt-1 active"' in main  # its vote can be changed here
+    # Garden first (its first show is earlier), then Andromeda with today and Monday
+    assert main.index("Cinema Garden (Rende)") < main.index("Andromeda River")
+    andromeda = main[main.index("Andromeda River"):]
+    assert ">Oggi<" in andromeda and ">Lun 19/10<" in andromeda
+    assert 'href="https://buy/today"' in andromeda and '<span class="show-end">→23:50</span>' in andromeda
+    assert "18:00" not in main and "Altro" not in main
+
+    assert client.get("/film/999").status_code == 404
+
+
+def test_film_page_without_shows_and_titles_link_to_it(client, session, cinema):
+    frankie = add_film(session, "Frankie", "in_sala", [-3], cinema)
+    frankie.last_seen_date = TODAY - timedelta(days=3)
+    session.commit()
+    page = client.get(f"/film/{frankie.id}").text
+    assert "Nessuno spettacolo in programma." in page
+    assert "Esce dalle sale il 21 ottobre se non ricompare." in page
+
+    clay = add_film(session, "Clayface", "in_sala", [0], cinema)
+    for html in (client.get("/").text, client.get("/cinema/andromeda").text):
+        assert f'href="/film/{clay.id}" class="film-title-link"' in html
+    assert f'href="/film/{frankie.id}" class="gone-title film-title-link"' in client.get("/").text

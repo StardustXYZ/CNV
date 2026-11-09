@@ -376,3 +376,30 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
     .cinema-menu ul { min-width: min(17rem, calc(100vw - 2rem)); }
     .day-film .thumb { width: 60px; }
 }
+
+/* ---- Film page ---- */
+.film-title-link { color: inherit; text-decoration: none; }
+.film-title-link:hover { color: var(--accent); }
+.film-page { display: flex; gap: 1.25rem; align-items: flex-start; margin-bottom: 1.5rem; }
+.film-page-poster { width: 160px; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--radius); flex-shrink: 0; background: var(--surface-2); }
+.film-page-poster.placeholder { display: flex; align-items: center; justify-content: center; font-size: 2.5rem; }
+.film-page-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.film-page-info h1 { font-size: 1.5rem; line-height: 1.2; }
+.film-page-info .vote-buttons { max-width: 15rem; }
+.section-title { font-size: 1.1rem; }
+.film-cinemas { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.75rem; }
+.film-cinema { background: var(--surface); border-radius: var(--radius); padding: 0.75rem 0.9rem; }
+.film-cinema h3 { font-size: 1rem; margin-bottom: 0.4rem; }
+.film-cinema h3 a { color: inherit; text-decoration: none; }
+.film-cinema h3 a:hover { color: var(--accent); }
+.film-day { display: flex; gap: 0.75rem; padding: 0.4rem 0; border-top: 1px solid var(--surface-2); }
+.film-day:first-of-type { border-top: none; }
+.film-day-label { min-width: 5.5rem; font-weight: 600; font-size: 0.85rem; padding-top: 0.15rem; }
+.film-day-salas { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.announced { margin-top: 1rem; }
+@media (max-width: 600px) {
+    .film-page { gap: 0.9rem; }
+    .film-page-poster { width: 110px; }
+    .film-page-info h1 { font-size: 1.2rem; }
+    .film-day-label { min-width: 4.5rem; }
+}

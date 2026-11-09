@@ -88,6 +88,13 @@
             document.querySelectorAll(".day-film").forEach((el) => {
                 if (!el.querySelector(".day-sala")) el.remove();
             });
+            // Film page
+            document.querySelectorAll(".film-day").forEach((el) => {
+                if (!el.querySelector(".day-sala")) el.remove();
+            });
+            document.querySelectorAll(".film-cinema").forEach((el) => {
+                if (!el.querySelector(".film-day")) el.remove();
+            });
             document.querySelectorAll(".day-films").forEach((el) => {
                 if (!el.querySelector(".day-film")) {
                     el.outerHTML = '<p class="empty-state">Per oggi non ci sono altri spettacoli: scegli un altro giorno.</p>';

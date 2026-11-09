@@ -11,7 +11,7 @@
     {% endif %}
 
     <div class="film-info">
-        <h3>{{ card.title }}</h3>
+        <h3><a href="/film/{{ film.id }}" class="film-title-link" title="Tutti gli spettacoli">{{ card.title }}</a></h3>
         <div class="meta">
             {% if film.year and film.is_tmdb_confirmed %}<span>{{ film.year }}</span>{% endif %}
             {% if film.has_tmdb_details and film.genre %}<span>{{ film.genre }}</span>{% endif %}

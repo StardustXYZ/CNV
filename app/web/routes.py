@@ -453,6 +453,55 @@ def cinema_page(request: Request, slug: str, giorno: str | None = Query(None), d
     )
 
 
+@dataclass
+class FilmDay:
+    day: date
+    salas: list[SalaShows]
+
+
+@dataclass
+class FilmCinema:
+    name: str
+    slug: str
+    days: list[FilmDay]
+
+
+@router.get("/film/{film_id}", response_class=HTMLResponse)
+def film_page(request: Request, film_id: int, db: Session = Depends(get_db)):
+    """One film: every show still to come, day by day, split by cinema."""
+    film = _get_film(db, film_id)
+    now = _now()
+    first_day = programme_day(now)
+
+    by_cinema: dict[tuple[str, str], dict[date, dict[str | None, dict[datetime, str]]]] = {}
+    rows = (
+        db.query(Showtime, Cinema)
+        .join(Cinema, Cinema.id == Showtime.cinema_id)
+        .filter(Showtime.film_id == film.id, Showtime.date >= first_day)
+    )
+    for show, cinema in rows:
+        start = show_datetime(show.date, show.time)
+        if show.date == first_day and start < now:
+            continue  # already started
+        starts = by_cinema.setdefault((cinema.name, cinema.slug), {}).setdefault(show.date, {}).setdefault(show.sala, {})
+        starts[start] = _show_url(show.booking_url, show.source_url, cinema.url)
+    cinemas = [
+        FilmCinema(
+            name=name,
+            slug=slug,
+            days=[FilmDay(day=d, salas=_group_by_sala(by_sala, film)) for d, by_sala in sorted(days.items())],
+        )
+        for (name, slug), days in by_cinema.items()
+    ]
+    cinemas.sort(key=lambda c: (c.days[0].salas[0].first_start, c.name))
+
+    card = _film_cards(db, [film], now)[0]
+    card.in_sala_since = _first_show_days(db, [film.id]).get(film.id)
+    if not card.has_shows and film.status == "in_sala":
+        card.exit_date = _exit_date(film)
+    return _render(request, db, "film.html", "film", card=card, cinemas=cinemas)
+
+
 @router.get("/in-uscita", response_class=HTMLResponse)
 def coming_soon(request: Request, db: Session = Depends(get_db)):
     """Films not in theaters yet: future screenings or announced by a cinema, soonest first."""
