@@ -7,13 +7,21 @@
     <p class="subtitle">Film annunciati dai cinema o con spettacoli solo futuri (prevendite e anteprime), con i cinema che li avranno.</p>
 </header>
 
+<nav class="chips view-chips" aria-label="Vista">
+    <a href="/in-uscita{% if q %}?q={{ q | urlencode }}{% endif %}" class="chip{% if view == 'elenco' %} active{% endif %}">Elenco</a>
+    <a href="/in-uscita?vista=calendario{% if q %}&amp;q={{ q | urlencode }}{% endif %}" class="chip{% if view == 'calendario' %} active{% endif %}">Calendario</a>
+</nav>
+
 <form class="filters" method="get" action="/in-uscita" role="search">
+    {% if view == "calendario" %}<input type="hidden" name="vista" value="calendario">{% endif %}
     <input type="search" name="q" value="{{ q or '' }}" placeholder="Cerca un titolo" aria-label="Cerca un titolo">
     <button type="submit" class="btn">Cerca</button>
-    {% if q %}<a href="/in-uscita" class="small">Togli filtri</a>{% endif %}
+    {% if q %}<a href="/in-uscita{% if view == 'calendario' %}?vista=calendario{% endif %}" class="small">Togli filtri</a>{% endif %}
 </form>
 
-{% if cards %}
+{% if view == "calendario" %}
+{% include "_release_calendar.html" %}
+{% elif cards %}
 {% set mode = "uscita" %}
 <div class="film-grid">
     {% for card in cards %}

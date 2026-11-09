@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -89,6 +90,7 @@ def asset_version(name: str) -> int:
 templates.env.filters["giorno"] = format_day
 templates.env.filters["data_lunga"] = format_long_date
 templates.env.filters["durata"] = format_runtime
+templates.env.globals["WEEKDAYS"] = WEEKDAYS
 templates.env.globals["asset_version"] = asset_version
 templates.env.filters["ora_locale"] = format_local_time
 
@@ -546,15 +548,67 @@ def film_page(request: Request, film_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/in-uscita", response_class=HTMLResponse)
-def coming_soon(request: Request, q: str | None = Query(None), db: Session = Depends(get_db)):
-    """Films not in theaters yet: future screenings or announced by a cinema, soonest first."""
+def coming_soon(
+    request: Request,
+    q: str | None = Query(None),
+    vista: str | None = Query(None),
+    mese: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Films not in theaters yet: future screenings or announced by a cinema, soonest first.
+
+    ``vista=calendario`` shows them on a month calendar (``mese=YYYY-MM``, this month by default).
+    """
     q = (q or "").strip() or None
     films = [f for f in db.query(Film).filter_by(status="in_uscita") if q is None or _title_matches(f, q)]
     cards = sorted(
         (c for c in _film_cards(db, films, _now()) if c.cinemas),
         key=lambda c: (c.first_date is None, c.first_date or date.max, c.title.lower()),
     )
-    return _render(request, db, "in_uscita.html", "in_uscita", cards=cards, q=q)
+    view = "calendario" if vista == "calendario" else "elenco"
+    context = {"cards": cards, "q": q, "view": view}
+    if view == "calendario":
+        context["month"] = _release_month(cards, mese, _now().date())
+    return _render(request, db, "in_uscita.html", "in_uscita", **context)
+
+
+@dataclass
+class ReleaseMonth:
+    first: date  # first day of the month shown
+    weeks: list[list[date]]  # Monday to Sunday, including the days of nearby months that fill the weeks
+    releases: dict[date, list[FilmCard]]  # films by their first date
+    undated: list[FilmCard]
+    prev: str | None  # "YYYY-MM" of the previous month, None before the current one
+    next: str | None  # "YYYY-MM" of the next month, None after the last release
+
+    @property
+    def title(self) -> str:
+        return f"{MONTHS[self.first.month - 1]} {self.first.year}"
+
+
+def _release_month(cards: list[FilmCard], month: str | None, today: date) -> ReleaseMonth:
+    """The month calendar of the coming releases."""
+    this_month = today.replace(day=1)
+    try:
+        first = date.fromisoformat(f"{month}-01") if month else this_month
+    except ValueError:
+        first = this_month
+    first = max(first, this_month)
+    releases: dict[date, list[FilmCard]] = {}
+    for card in cards:
+        if card.first_date:
+            releases.setdefault(card.first_date, []).append(card)
+    last_release = max(releases, default=today)
+    next_first = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    prev_first = (first - timedelta(days=1)).replace(day=1)
+    return ReleaseMonth(
+        first=first,
+        weeks=calendar.Calendar(firstweekday=0).monthdatescalendar(first.year, first.month),
+        releases=releases,
+        undated=[c for c in cards if not c.first_date],
+        prev=prev_first.strftime("%Y-%m") if first > this_month else None,
+        next=next_first.strftime("%Y-%m") if next_first <= last_release else None,
+    )
 
 
 @router.get("/da-verificare", response_class=HTMLResponse)

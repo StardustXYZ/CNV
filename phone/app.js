@@ -5,6 +5,7 @@
 "use strict";
 
 const WEEKDAYS = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+const CALENDAR_DAYS = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"];
 const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 const VOTES = ["V", "?"];
@@ -320,19 +321,64 @@ function inSalaResults(ctx, params, { voto, genere, cinema, q, films }) {
 
 function pageInUscita(ctx, params) {
     const q = (params.get("q") || "").trim();
+    const calendar = params.get("vista") === "calendario";
+    const views = [["Elenco", null], ["Calendario", "calendario"]].map(([label, value]) =>
+        `<a href="${filterHash("/uscita", params, { vista: value, mese: null })}" class="chip${(value === "calendario") === calendar ? " active" : ""}">${label}</a>`).join("");
     return `<header class="page-header"><h1>In uscita</h1>
         <p class="subtitle">Film annunciati dai cinema o con spettacoli solo futuri (prevendite e anteprime), con i cinema che li avranno.</p></header>
+        <nav class="chips view-chips">${views}</nav>
         <div class="filters" role="search">${searchBox(q)}</div>
-        <div id="results">${inUscitaResults(ctx, q)}</div>`;
+        <div id="results">${calendar ? releaseCalendar(ctx, params, q) : inUscitaResults(ctx, q)}</div>`;
 }
 
-function inUscitaResults(ctx, q) {
-    const cards = DATA.films
+/** Films coming out, with their cinemas and first date, soonest first. */
+function comingCards(ctx, q) {
+    return DATA.films
         .filter((f) => f.status === "in_uscita" && titleMatches(f, q))
         .map((f) => ({ f, releases: cinemaReleases(f, ctx) }))
         .filter((c) => c.releases.length)
         .map((c) => ({ ...c, first: c.releases.find((r) => r.date)?.date || null }))
         .sort((a, b) => (a.first === null) - (b.first === null) || (a.first || "").localeCompare(b.first || "") || a.f.title.localeCompare(b.f.title));
+}
+
+/** "In uscita" as a month calendar: each film on its first date (this month by default). */
+function releaseCalendar(ctx, params, q) {
+    const cards = comingCards(ctx, q);
+    const thisMonth = ctx.day.slice(0, 7);
+    const asked = /^\d{4}-\d{2}$/.test(params.get("mese") || "") ? params.get("mese") : thisMonth;
+    const month = asked < thisMonth ? thisMonth : asked;
+    const [y, m] = month.split("-").map(Number);
+    const shift = (n) => isoDate(new Date(y, m - 1 + n, 1)).slice(0, 7);
+    const lastRelease = cards.map((c) => c.first).filter(Boolean).sort().pop() || ctx.day;
+    const byDay = new Map();
+    cards.filter((c) => c.first).forEach((c) => push(byDay, c.first, c.f));
+
+    // Monday to Sunday, with the days of nearby months that fill the first and last week
+    const firstDay = new Date(y, m - 1, 1);
+    const start = new Date(y, m - 1, 1 - ((firstDay.getDay() + 6) % 7));
+    const days = [];
+    for (let d = new Date(start); d.getMonth() === m - 1 || d < firstDay || days.length % 7; d.setDate(d.getDate() + 1)) {
+        days.push(isoDate(d));
+    }
+    const nav = (target, label, symbol) => target
+        ? `<a href="${filterHash("/uscita", params, { mese: target })}" class="btn" aria-label="${label}">${symbol}</a>`
+        : `<span class="btn disabled" aria-hidden="true">${symbol}</span>`;
+    const cells = days.map((d) => {
+        const films = byDay.get(d) || [];
+        const cls = ["cal-day", d.slice(0, 7) !== month ? "other-month" : "", d === ctx.day ? "today" : "", d < ctx.day ? "past" : ""].filter(Boolean).join(" ");
+        return `<div class="${cls}"><span class="cal-num">${Number(d.slice(8))}</span>${films.map((f) =>
+            `<a href="#/film/${f.id}" class="cal-film" title="${esc(f.title)}">${f.poster ? `<img src="${esc(f.poster)}" alt="" loading="lazy">` : `<span class="cal-placeholder">🎬</span>`}<span class="cal-title">${esc(f.title)}</span></a>`).join("")}</div>`;
+    }).join("");
+    const undated = cards.filter((c) => !c.first);
+    return `<div class="month-nav">${nav(month > thisMonth ? shift(-1) : null, "Mese precedente", "‹")}
+            <h2>${capitalize(MONTHS[m - 1])} ${y}</h2>${nav(shift(1) <= lastRelease.slice(0, 7) ? shift(1) : null, "Mese successivo", "›")}</div>
+        <div class="release-calendar">${CALENDAR_DAYS.map((n) => `<div class="cal-head">${n}</div>`).join("")}${cells}</div>
+        ${undated.length ? `<h3 class="section-title undated-title">Data da definire</h3>
+            <ul class="undated-list">${undated.map((c) => `<li>${filmLink(c.f)}</li>`).join("")}</ul>` : ""}`;
+}
+
+function inUscitaResults(ctx, q) {
+    const cards = comingCards(ctx, q);
     let html = q ? `<p class="small filter-info">${cards.length} film · <a href="#/uscita">Togli filtri</a></p>` : "";
     if (!cards.length) return html + `<p class="empty-state">${q ? "Nessun film in uscita con questo titolo." : "Nessun film in uscita al momento."}</p>`;
     return html + `<div class="film-grid">${cards.map((c) => `<div class="release-group">
