@@ -233,7 +233,7 @@ def test_home_shows_only_remaining_shows_of_today_by_cinema_and_sala(client, ses
         "2026-10-18T00:00",
         "2026-10-17T22:30",
     ]
-    main = html[html.index("<main"):]  # the cinema menu in the navbar lists them too
+    main = html[html.index('class="film-grid"'):]  # the cinema menu and the filters list them too
     assert main.index("Cinema Garden (Rende)") < main.index("Andromeda River")
     assert html.index("Sala 1") < html.index("Sala 3")
     assert ">00:00<" in html
@@ -661,3 +661,54 @@ def test_film_page_without_shows_and_titles_link_to_it(client, session, cinema):
     for html in (client.get("/").text, client.get("/cinema/andromeda").text):
         assert f'href="/film/{clay.id}" class="film-title-link"' in html
     assert f'href="/film/{frankie.id}" class="gone-title film-title-link"' in client.get("/").text
+
+
+def test_home_filters_by_genre_cinema_and_title(client, session, cinema):
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    session.add(garden)
+    session.commit()
+    details = dict(tmdb_match_status="abbinato", details_tmdb_id=None)
+    clay = add_film(session, "CLAYFACE", "in_sala", [0], cinema, tmdb_id=1, tmdb_title="Clayface", genre="Horror", **details)
+    clay.details_tmdb_id = 1
+    hope = add_film(session, "HOPE", "in_sala", [], cinema, tmdb_id=2, tmdb_title="Hope", genre="Fantascienza", **details)
+    hope.details_tmdb_id = 2
+    session.commit()
+    add_show(session, hope, garden, TODAY, time(22, 0))
+    add_film(session, "Città perduta", "in_sala", [0], cinema, vote="V")
+    gone = add_film(session, "Frankie", "in_sala", [-3], cinema)
+
+    def grid(**params):
+        html = client.get("/", params=params).text
+        return html, html[html.index("<main"):].split('class="filters"', 1)[1].split("</form>", 1)[1]
+
+    html, _ = grid()
+    assert '<option value="Fantascienza">Fantascienza</option>' in html and '<option value="Horror">Horror</option>' in html
+
+    html, page = grid(genere="Horror", q="clay")
+    assert "Clayface" in page and "Hope" not in page and "Città perduta" not in page
+    assert '<option value="Horror" selected>' in html and 'value="clay"' in html  # the form shows the choices
+
+    # A cinema: only its films, only its shows, and no "no longer programmed" list
+    _, page = grid(cinema="garden")
+    assert "Hope" in page and "Clayface" not in page and "Frankie" not in page
+    assert "Andromeda River" not in page
+
+    # Title search ignores accents and case, also on the cinema's own title
+    _, page = grid(q="citta")
+    assert "Città perduta" in page and "Clayface" not in page
+    assert "Clayface" in grid(q="clay")[1] and "Clayface" in grid(q="CLAYFACE")[1]
+
+    # Filters add up, and the vote chips keep them
+    html, page = grid(q="citta", voto="V")
+    assert "Città perduta" in page
+    assert 'href="/?voto=nessuno&amp;q=citta"' in html
+    assert "Nessun film in sala con questi filtri." in grid(q="zzz")[1]
+    assert "Togli filtri" in grid(genere="Horror")[0] and "Togli filtri" not in grid()[0]
+
+
+def test_coming_soon_search(client, session, cinema):
+    add_film(session, "Avengers", "in_uscita", [30], cinema)
+    add_film(session, "Matrix", "in_uscita", [20], cinema)
+    page = client.get("/in-uscita", params={"q": "aveng"}).text.split("</form>", 1)[1]
+    assert "Avengers" in page and "Matrix" not in page
+    assert "Nessun film in uscita con questo titolo." in client.get("/in-uscita", params={"q": "zzz"}).text

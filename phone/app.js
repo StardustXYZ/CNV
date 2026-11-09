@@ -22,6 +22,7 @@ let exported = load("cnv.exported", {});  // film id -> date the CSV was importe
 let shownPage = "";                       // HTML of the page on screen, for the minute refresh
 let swipeDirection = "";                  // "next" | "prev": slide-in of the page drawn after a swipe
 let inSalaSeen = new Set();               // V films in sala whose notice was seen (see updateInSalaSeen)
+const lastQuery = { "/": "", "/uscita": "" }; // filters of In sala and In uscita, kept when coming back
 
 // ------------------------------------------------------------------ helpers
 
@@ -79,14 +80,14 @@ function longDate(iso, today) {
 
 // ------------------------------------------------------------------ derived data
 
-/** Shows not started yet, grouped as the pages need them. */
-function buildContext(now) {
+/** Shows not started yet, grouped as the pages need them (only one cinema's with ``cinema``). */
+function buildContext(now, cinema = null) {
     const day = programmeDay(now);
     const upcoming = new Map();       // film -> day -> cinema slug -> sala -> [{start, url}]
     const firstByCinema = new Map();  // film -> cinema slug -> first upcoming day
     const byCinemaDay = new Map();    // cinema slug -> day -> film -> sala -> [{start, url}]
     for (const s of DATA.shows) {
-        if (s.d < day) continue;
+        if (s.d < day || (cinema && s.c !== cinema)) continue;
         const start = showStart(s.d, s.t);
         if (s.d === day && start < now) continue; // already started
         const show = { start, end: showEnd(start, FILMS.get(s.f)), url: s.u || (CINEMAS.get(s.c) || {}).url || "#" };
@@ -97,6 +98,7 @@ function buildContext(now) {
     }
     const announced = new Map();      // film -> cinema slug -> [dates]
     for (const c of DATA.coming) {
+        if (cinema && c.c !== cinema) continue;
         const list = nested(announced, c.f).get(c.c) || [];
         if (c.d) list.push(c.d);
         nested(announced, c.f).set(c.c, list);
@@ -240,22 +242,55 @@ function updateInSalaSeen() {
 
 // ------------------------------------------------------------------ pages
 
+/** The search box: the words typed appear in the title (TMDB or the cinema's), ignoring accents. */
+const normalize = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+const titleMatches = (film, q) => !q || [film.title, film.raw].some((t) => t && normalize(t).includes(normalize(q)));
+/** Hash of a page with its filters, some changed (null removes one). */
+function filterHash(path, params, changes) {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) { if (v) p.set(k, v); else p.delete(k); }
+    const query = p.toString();
+    return `#${path}${query ? `?${query}` : ""}`;
+}
+function searchBox(q) {
+    return `<input type="search" id="search" data-filter="q" value="${esc(q || "")}" placeholder="Cerca un titolo" aria-label="Cerca un titolo" autocomplete="off">`;
+}
+
 function pageInSala(ctx, params) {
     const voto = params.get("voto");
+    const inSala = DATA.films.filter((f) => f.status === "in_sala");
+    const genres = [...new Set(inSala.map((f) => f.genre).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const genere = genres.includes(params.get("genere")) ? params.get("genere") : null;
+    const cinema = CINEMAS.has(params.get("cinema")) ? params.get("cinema") : null;
+    const q = (params.get("q") || "").trim();
     const filters = [[null, "Tutti"], ["nessuno", "Da votare"], ["V", "V"], ["?", "?"]];
-    let films = DATA.films.filter((f) => f.status === "in_sala");
-    if (voto === "nessuno") films = films.filter((f) => !votes[f.id]);
-    else if (VOTES.includes(voto)) films = films.filter((f) => votes[f.id] === voto);
-    const showing = films.filter((f) => hasShows(f, ctx))
-        .sort((a, b) => (b.since || "").localeCompare(a.since || "") || a.title.localeCompare(b.title)); // latest arrivals first
-    const gone = films.filter((f) => !hasShows(f, ctx)).sort((a, b) => a.title.localeCompare(b.title));
 
     const chips = filters.map(([value, label]) =>
-        `<a href="#/${value ? "?voto=" + encodeURIComponent(value) : ""}" class="chip${(voto || null) === value ? " active" : ""}">${label}</a>`).join("");
-    let html = `<header class="page-header"><h1>Film in sala</h1><nav class="chips">${chips}</nav></header>`;
+        `<a href="${filterHash("/", params, { voto: value })}" class="chip${(voto || null) === value ? " active" : ""}">${label}</a>`).join("");
+    const options = (list, selected, all) => `<option value="">${all}</option>` +
+        list.map(([value, label]) => `<option value="${esc(value)}"${value === selected ? " selected" : ""}>${esc(label)}</option>`).join("");
+    return `<header class="page-header"><h1>Film in sala</h1><nav class="chips">${chips}</nav></header>
+        <div class="filters" role="search">${searchBox(q)}
+            <select data-filter="genere" aria-label="Genere">${options(genres.map((g) => [g, g]), genere, "Tutti i generi")}</select>
+            <select data-filter="cinema" aria-label="Cinema">${options(DATA.cinemas.map((c) => [c.slug, c.name]), cinema, "Tutti i cinema")}</select>
+        </div>
+        <div id="results">${inSalaResults(ctx, params, { voto, genere, cinema, q, films: inSala })}</div>`;
+}
+
+/** The films of In sala that pass the filters (the part redrawn while typing a search). */
+function inSalaResults(ctx, params, { voto, genere, cinema, q, films }) {
+    films = films.filter((f) => (voto === "nessuno" ? !votes[f.id] : !VOTES.includes(voto) || votes[f.id] === voto)
+        && (!genere || f.genre === genere) && titleMatches(f, q));
+    const showing = films.filter((f) => hasShows(f, ctx))
+        .sort((a, b) => (b.since || "").localeCompare(a.since || "") || a.title.localeCompare(b.title)); // latest arrivals first
+    // With a cinema chosen, films not on there are simply left out
+    const gone = cinema ? [] : films.filter((f) => !hasShows(f, ctx)).sort((a, b) => a.title.localeCompare(b.title));
+    const filtered = genere || cinema || q;
+    let html = filtered
+        ? `<p class="small filter-info">${showing.length} film · <a href="${filterHash("/", params, { genere: null, cinema: null, q: null })}">Togli filtri</a></p>` : "";
     html += showing.length
         ? `<div class="film-grid">${showing.map((f) => filmCard(f, ctx, "oggi")).join("")}</div>`
-        : `<p class="empty-state">${voto ? "Nessun film in sala con questo filtro." : "Nessun film in programmazione."}</p>`;
+        : `<p class="empty-state">${voto || filtered ? "Nessun film in sala con questi filtri." : "Nessun film in programmazione."}</p>`;
     if (gone.length) {
         html += `<details class="gone-section" data-key="gone"><summary>Non più in programmazione <span class="count">${gone.length}</span>
             <span class="small">— spariti dai siti dei cinema, in attesa di essere segnati come usciti</span></summary>
@@ -270,16 +305,23 @@ function pageInSala(ctx, params) {
     return html;
 }
 
-function pageInUscita(ctx) {
+function pageInUscita(ctx, params) {
+    const q = (params.get("q") || "").trim();
+    return `<header class="page-header"><h1>In uscita</h1>
+        <p class="subtitle">Film annunciati dai cinema o con spettacoli solo futuri (prevendite e anteprime), con i cinema che li avranno.</p></header>
+        <div class="filters" role="search">${searchBox(q)}</div>
+        <div id="results">${inUscitaResults(ctx, q)}</div>`;
+}
+
+function inUscitaResults(ctx, q) {
     const cards = DATA.films
-        .filter((f) => f.status === "in_uscita")
+        .filter((f) => f.status === "in_uscita" && titleMatches(f, q))
         .map((f) => ({ f, releases: cinemaReleases(f, ctx) }))
         .filter((c) => c.releases.length)
         .map((c) => ({ ...c, first: c.releases.find((r) => r.date)?.date || null }))
         .sort((a, b) => (a.first === null) - (b.first === null) || (a.first || "").localeCompare(b.first || "") || a.f.title.localeCompare(b.f.title));
-    let html = `<header class="page-header"><h1>In uscita</h1>
-        <p class="subtitle">Film annunciati dai cinema o con spettacoli solo futuri (prevendite e anteprime), con i cinema che li avranno.</p></header>`;
-    if (!cards.length) return html + `<p class="empty-state">Nessun film in uscita al momento.</p>`;
+    let html = q ? `<p class="small filter-info">${cards.length} film · <a href="#/uscita">Togli filtri</a></p>` : "";
+    if (!cards.length) return html + `<p class="empty-state">${q ? "Nessun film in uscita con questo titolo." : "Nessun film in uscita al momento."}</p>`;
     return html + `<div class="film-grid">${cards.map((c) => `<div class="release-group">
         <p class="release-date${c.first ? "" : " undated"}">${c.first ? `Dal ${longDate(c.first, ctx.day)}` : "Data da definire"}</p>
         ${filmCard(c.f, ctx, "uscita")}</div>`).join("")}</div>`;
@@ -418,8 +460,12 @@ function route() {
  * where a backup file may be being chosen. */
 function render(periodic = false) {
     if (!DATA) return;
-    const ctx = buildContext(new Date());
+    const now = new Date();
+    const fullCtx = buildContext(now);
     const { path, params } = route();
+    if (path in lastQuery) lastQuery[path] = params.toString();
+    const cinemaFilter = path === "/" && CINEMAS.has(params.get("cinema")) ? params.get("cinema") : null;
+    const ctx = cinemaFilter ? buildContext(now, cinemaFilter) : fullCtx;
     let page, active;
     if (path.startsWith("/cinema/")) {
         const slug = decodeURIComponent(path.slice("/cinema/".length));
@@ -428,14 +474,19 @@ function render(periodic = false) {
     } else if (path.startsWith("/film/")) {
         page = pageFilm(ctx, Number(path.slice("/film/".length)));
         active = "film";
-    } else if (path === "/uscita") { page = pageInUscita(ctx); active = "uscita"; }
+    } else if (path === "/uscita") { page = pageInUscita(ctx, params); active = "uscita"; }
     else if (path === "/watchlist") { page = pageWatchlist(); active = "watchlist"; }
     else if (path === "/voti") { page = pageVoti(); active = "voti"; }
     else { page = pageInSala(ctx, params); active = "sala"; }
-    page = arrivalsNotice(ctx) + page;
+    page = arrivalsNotice(fullCtx) + page;
 
     const app = document.getElementById("app");
-    if (!periodic) {
+    const results = app.querySelector("#results");
+    if (document.activeElement?.id === "search" && results) {
+        // Typing a search: redraw only the results, so the box keeps the focus and the keyboard
+        const fresh = Object.assign(document.createElement("template"), { innerHTML: page }).content.querySelector("#results");
+        if (fresh) results.replaceWith(fresh);
+    } else if (!periodic) {
         app.innerHTML = page;
         if (swipeDirection) {
             app.classList.remove("swipe-next", "swipe-prev");
@@ -449,15 +500,18 @@ function render(periodic = false) {
         open.forEach((key) => app.querySelector(`details[data-key="${key}"]`)?.setAttribute("open", ""));
     }
     if (!periodic || path !== "/voti") shownPage = page;
-    renderNav(ctx, active);
-    renderMenu(ctx, active);
+    renderNav(fullCtx, active);
+    renderMenu(fullCtx, active);
 }
+
+/** A menu page with the filters it had last time. */
+const tabHash = (path) => `#${path}${lastQuery[path] ? `?${lastQuery[path]}` : ""}`;
 
 function renderNav(ctx, active) {
     const inSala = DATA.films.filter((f) => f.status === "in_sala" && hasShows(f, ctx)).length;
     const inUscita = DATA.films.filter((f) => f.status === "in_uscita" && cinemaReleases(f, ctx).length).length;
     const watch = toExport().length;
-    const links = [["sala", "#/", "In sala", inSala], ["uscita", "#/uscita", "In uscita", inUscita],
+    const links = [["sala", tabHash("/"), "In sala", inSala], ["uscita", tabHash("/uscita"), "In uscita", inUscita],
         ["watchlist", "#/watchlist", "Watchlist", watch], ["voti", "#/voti", "Voti", 0]];
     document.getElementById("nav-links").innerHTML = links.map(([key, href, label, n]) =>
         `<a href="${href}" class="${active === key ? "active" : ""}">${label}${n ? ` <span class="count">${n}</span>` : ""}</a>`).join("");
@@ -537,7 +591,19 @@ document.addEventListener("click", (e) => {
     }
 });
 
+document.addEventListener("input", (e) => {
+    if (e.target.id !== "search") return;
+    const { path, params } = route();
+    history.replaceState(null, "", filterHash(path, params, { q: e.target.value.trim() || null }));
+    render();
+});
+
 document.addEventListener("change", (e) => {
+    if (e.target.matches("select[data-filter]")) {
+        const { path, params } = route();
+        location.hash = filterHash(path, params, { [e.target.dataset.filter]: e.target.value || null });
+        return;
+    }
     if (e.target.dataset.action !== "import-votes" || !e.target.files.length) return;
     e.target.files[0].text().then((text) => {
         const backup = JSON.parse(text);
@@ -572,7 +638,8 @@ function swipeTarget(step) {
         return day ? `#/cinema/${slug}?giorno=${day}` : null;
     }
     const index = TABS.indexOf(`#${path}`);
-    return index === -1 ? null : TABS[index + step] || null;
+    const target = index === -1 ? null : TABS[index + step] || null;
+    return target && target.slice(1) in lastQuery ? tabHash(target.slice(1)) : target;
 }
 
 function endSwipe() {
@@ -587,7 +654,7 @@ document.addEventListener("touchstart", (e) => {
     if (!DATA || e.touches.length !== 1) return;
     const t = e.touches[0];
     if (t.clientX < SWIPE_EDGE || t.clientX > window.innerWidth - SWIPE_EDGE) return;
-    if (e.target.closest(".calendar, .chips, .nav-links, .cinema-menu, input")) return; // they scroll or open by themselves
+    if (e.target.closest(".calendar, .chips, .nav-links, .cinema-menu, .filters, input, select")) return; // they scroll or open by themselves
     swipe = { x: t.clientX, y: t.clientY, horizontal: null };
 }, { passive: true });
 

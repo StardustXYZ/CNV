@@ -7,6 +7,12 @@
     <p class="subtitle">Film annunciati dai cinema o con spettacoli solo futuri (prevendite e anteprime), con i cinema che li avranno.</p>
 </header>
 
+<form class="filters" method="get" action="/in-uscita" role="search">
+    <input type="search" name="q" value="{{ q or '' }}" placeholder="Cerca un titolo" aria-label="Cerca un titolo">
+    <button type="submit" class="btn">Cerca</button>
+    {% if q %}<a href="/in-uscita" class="small">Togli filtri</a>{% endif %}
+</form>
+
 {% if cards %}
 {% set mode = "uscita" %}
 <div class="film-grid">
@@ -22,6 +28,6 @@
     {% endfor %}
 </div>
 {% else %}
-<p class="empty-state">Nessun film in uscita al momento.</p>
+<p class="empty-state">{% if q %}Nessun film in uscita con questo titolo.{% else %}Nessun film in uscita al momento.{% endif %}</p>
 {% endif %}
 {% endblock %}
