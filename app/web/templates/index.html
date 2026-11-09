@@ -5,12 +5,27 @@
 <header class="page-header">
     <h1>Film in sala</h1>
     <nav class="chips" aria-label="Filtra per voto">
-        {% set filters = [(None, "Tutti"), ("nessuno", "Da votare"), ("V", "V"), ("?", "?")] %}
-        {% for value, label in filters %}
-        <a href="/{% if value %}?voto={{ value | urlencode }}{% endif %}" class="chip{% if voto == value %} active{% endif %}">{{ label }}</a>
+        {% set vote_chips = [(None, "Tutti"), ("nessuno", "Da votare"), ("V", "V"), ("?", "?")] %}
+        {% for value, label in vote_chips %}
+        <a href="{{ filter_url(voto=value) }}" class="chip{% if voto == value %} active{% endif %}">{{ label }}</a>
         {% endfor %}
     </nav>
 </header>
+
+<form class="filters" method="get" action="/" role="search">
+    {% if voto %}<input type="hidden" name="voto" value="{{ voto }}">{% endif %}
+    <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Cerca un titolo" aria-label="Cerca un titolo">
+    <select name="genere" aria-label="Genere" onchange="this.form.submit()">
+        <option value="">Tutti i generi</option>
+        {% for g in genres %}<option value="{{ g }}"{% if g == filters.genere %} selected{% endif %}>{{ g }}</option>{% endfor %}
+    </select>
+    <select name="cinema" aria-label="Cinema" onchange="this.form.submit()">
+        <option value="">Tutti i cinema</option>
+        {% for c in cinema_menu %}<option value="{{ c.slug }}"{% if c.slug == filters.cinema %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn">Cerca</button>
+    {% if filters.genere or filters.cinema or filters.q %}<a href="{{ filter_url(genere=None, cinema=None, q=None) }}" class="small">Togli filtri</a>{% endif %}
+</form>
 
 {% if cards %}
 {% set mode = "oggi" %}
@@ -19,8 +34,8 @@
     {% include "_film_card.html" %}
     {% endfor %}
 </div>
-{% elif voto %}
-<p class="empty-state">Nessun film in sala con questo filtro.</p>
+{% elif voto or filters.genere or filters.cinema or filters.q %}
+<p class="empty-state">Nessun film in sala con questi filtri.</p>
 {% else %}
 <p class="empty-state">
     Nessun film in programmazione.<br>

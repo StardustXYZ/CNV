@@ -403,3 +403,19 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
     .film-page-info h1 { font-size: 1.2rem; }
     .film-day-label { min-width: 4.5rem; }
 }
+
+/* ---- Filters and search ---- */
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: -0.5rem 0 1.25rem; }
+.filters input[type="search"], .filters select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--surface-2);
+    border-radius: var(--radius);
+    padding: 0.4rem 0.6rem;
+    font: inherit;
+    font-size: 0.9rem;
+    max-width: 100%;
+}
+.filters input[type="search"] { flex: 1 1 12rem; min-width: 0; }
+.filters select { flex: 1 1 9rem; min-width: 0; }
+.filter-info { margin: -0.5rem 0 1rem; }

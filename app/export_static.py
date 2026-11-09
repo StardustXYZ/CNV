@@ -59,6 +59,7 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         {
             "id": f.id,
             "title": f.tmdb_title if f.is_tmdb_confirmed and f.tmdb_title else f.raw_title,
+            "raw": f.raw_title if f.is_tmdb_confirmed and f.tmdb_title and f.tmdb_title != f.raw_title else None,
             "tmdb": f.tmdb_id if f.is_tmdb_confirmed else None,
             "poster": f.poster_url if f.is_tmdb_confirmed else None,
             "year": f.year if f.is_tmdb_confirmed else None,
