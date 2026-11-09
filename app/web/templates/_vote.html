@@ -1,12 +1,28 @@
-<div class="vote-buttons" id="vote-{{ film.id }}">
-    {% for opt in votes %}
-    <button
-        hx-post="/film/{{ film.id }}/vote"
-        hx-vals='{"v": "{{ opt }}"}'
-        hx-target="#vote-{{ film.id }}"
-        hx-swap="outerHTML"
-        class="btn-vote vote-opt-{{ loop.index }}{% if film.vote == opt %} active{% endif %}"
-        title="{% if film.vote == opt %}Togli il voto{% elif opt == 'V' %}Voglio vederlo{% else %}Indeciso{% endif %}"
-    >{{ opt }}</button>
-    {% endfor %}
+{# Vote buttons V / ? / ✓ of a film; marking ✓ asks where it was seen (`ask_cinema`). #}
+<div class="vote-box" id="vote-{{ film.id }}">
+    <div class="vote-buttons">
+        {% for opt in votes %}
+        <button
+            hx-post="/film/{{ film.id }}/vote"
+            hx-vals='{"v": "{{ opt }}"}'
+            hx-target="#vote-{{ film.id }}"
+            hx-swap="outerHTML"
+            class="btn-vote vote-opt-{{ loop.index }}{% if film.vote == opt %} active{% endif %}"
+            title="{% if film.vote == opt %}Togli il voto{% else %}{{ VOTE_TITLES[opt] }}{% endif %}"
+        >{{ VOTE_LABELS[opt] }}</button>
+        {% endfor %}
+    </div>
+    {% if film.vote == "S" %}
+    {% if ask_cinema %}
+    <div class="seen-ask">
+        <span class="small">Dove l'hai visto?</span>
+        {% for c in ask_cinema %}
+        <button hx-post="/film/{{ film.id }}/visto-dove" hx-vals='{"cinema": "{{ c.slug }}"}' hx-target="#vote-{{ film.id }}" hx-swap="outerHTML" class="chip">{{ c.name }}</button>
+        {% endfor %}
+        <button hx-post="/film/{{ film.id }}/visto-dove" hx-vals='{"cinema": ""}' hx-target="#vote-{{ film.id }}" hx-swap="outerHTML" class="chip chip-skip">Salta</button>
+    </div>
+    {% elif film.seen_on %}
+    <p class="small seen-info">✓ Visto il {{ film.seen_on | data_lunga(today) }}{% if film.seen_cinema %} · {{ film.seen_cinema.name }}{% endif %}</p>
+    {% endif %}
+    {% endif %}
 </div>

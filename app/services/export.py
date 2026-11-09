@@ -1,4 +1,4 @@
-"""Export the watchlist to a Letterboxd-compatible CSV and track what was exported."""
+"""Export the watchlist and the diary of seen films to Letterboxd CSV files, tracking what was exported."""
 
 from __future__ import annotations
 
@@ -83,4 +83,38 @@ def unmark_exported(db: Session, film: Film) -> None:
     """Put a film back among those to export."""
     film.letterboxd_exported = False
     film.exported_at = None
+    db.flush()
+
+
+# ------------------------------------------------------------------ diary (films marked seen, ✓)
+
+
+def seen_films(db: Session) -> list[Film]:
+    """Films marked seen, latest first."""
+    films = db.query(Film).filter(Film.vote == "S").all()
+    return sorted(films, key=lambda f: (f.seen_on is None, -(f.seen_on.toordinal() if f.seen_on else 0), f.raw_title.lower()))
+
+
+def diary_exportable(db: Session) -> list[Film]:
+    """Seen films not in the Letterboxd diary yet, with a confirmed TMDB match."""
+    return [f for f in seen_films(db) if not f.diary_exported and f.is_tmdb_confirmed]
+
+
+def export_diary_csv(db: Session) -> str:
+    """CSV for the Letterboxd import with ``WatchedDate``: each film becomes a diary entry.
+
+    Like the watchlist, exporting marks nothing: ``mark_diary_exported`` does, once imported.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["tmdbID", "Title", "Year", "WatchedDate"])
+    for f in diary_exportable(db):
+        writer.writerow([f.tmdb_id, f.tmdb_title or f.raw_title, f.year or "", f.seen_on.isoformat() if f.seen_on else ""])
+    return buf.getvalue()
+
+
+def mark_diary_exported(db: Session, film_ids: list[int], exported: bool = True) -> None:
+    """Mark seen films as imported in the Letterboxd diary (or back to export)."""
+    for film in db.query(Film).filter(Film.id.in_(film_ids)).all():
+        film.diary_exported = exported
     db.flush()

@@ -46,7 +46,7 @@ class Film(Base):
     tmdb_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     poster_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Anno
-    vote: Mapped[str | None] = mapped_column(String(1), nullable=True)  # stato_utente: V / ? (indeciso) / None
+    vote: Mapped[str | None] = mapped_column(String(1), nullable=True)  # stato_utente: V / ? (indeciso) / S (visto, ✓) / None
     status: Mapped[str] = mapped_column(String(50), default="in_uscita", index=True)  # in_uscita | in_sala | uscito
     left_theaters_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # data_uscita_dalle_sale
     letterboxd_exported: Mapped[bool] = mapped_column(Boolean, default=False)  # esportato_letterboxd
@@ -62,11 +62,16 @@ class Film(Base):
     details_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # TMDB film runtime/genre belong to
     # The "now in sala" notice for a V film was seen (or the vote was given while in sala)
     in_sala_noticed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Vote "S" (seen, ✓): when and where, and whether it went into the Letterboxd diary
+    seen_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    seen_cinema_id: Mapped[int | None] = mapped_column(ForeignKey("cinemas.id"), nullable=True)
+    diary_exported: Mapped[bool] = mapped_column(Boolean, default=False)
 
     showtimes: Mapped[list[Showtime]] = relationship(back_populates="film", cascade="all, delete-orphan")
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")
     aliases: Mapped[list[FilmAlias]] = relationship(back_populates="film", cascade="all, delete-orphan")
     coming_soon: Mapped[list[ComingSoon]] = relationship(back_populates="film", cascade="all, delete-orphan")
+    seen_cinema: Mapped[Cinema | None] = relationship()
 
     @property
     def is_tmdb_confirmed(self) -> bool:

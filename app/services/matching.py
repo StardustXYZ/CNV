@@ -36,7 +36,7 @@ STATUS_MANUAL = "manuale"
 AUTO_MIN_SIMILARITY = 0.85  # below this the best candidate always goes to review
 AUTO_MIN_MARGIN = 0.08  # score gap required between best and runner-up
 NOT_FOUND_RETRY_DAYS = 7
-VOTE_PRIORITY = {"V": 2, "?": 1}  # which vote wins when two duplicates are merged
+VOTE_PRIORITY = {"S": 3, "V": 2, "?": 1}  # which vote wins when two duplicates are merged
 MAX_RESULTS_PER_QUERY = 10
 MAX_CONSECUTIVE_API_ERRORS = 3
 
@@ -368,7 +368,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
             db.add(FilmAlias(normalized_title=title, film_id=survivor.id))
 
     # Film fields. Different votes on the two copies: keep the most interested one
-    # (V over ?), so a "want to see" is never lost.
+    # (seen over V, V over ?), so a "want to see" or a "seen" is never lost.
     survivor.vote = max(
         (v for v in (survivor.vote, other.vote) if v), key=lambda v: VOTE_PRIORITY.get(v, 0), default=None
     )
@@ -380,6 +380,10 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     survivor.is_event = survivor.is_event and other.is_event
     survivor.letterboxd_exported = survivor.letterboxd_exported or other.letterboxd_exported
     survivor.in_sala_noticed = survivor.in_sala_noticed or other.in_sala_noticed  # notice seen on either copy
+    if survivor.vote == "S":
+        survivor.seen_on = survivor.seen_on or other.seen_on
+        survivor.seen_cinema_id = survivor.seen_cinema_id or other.seen_cinema_id
+        survivor.diary_exported = survivor.diary_exported or other.diary_exported
     survivor.exported_at = _latest(survivor.exported_at, other.exported_at)
     if survivor.status != "uscito" or other.status != "uscito":
         # Still programmed somewhere: the sync recomputes the status right after

@@ -8,9 +8,10 @@ const WEEKDAYS = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
 const CALENDAR_DAYS = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"];
 const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
-const VOTES = ["V", "?"];
-const VOTE_TITLES = { "V": "Voglio vederlo", "?": "Indeciso" };
-const VOTE_PRIORITY = { "V": 2, "?": 1 }; // two merged copies keep the most interested vote
+const VOTES = ["V", "?", "S"]; // S: seen, shown as ✓
+const VOTE_LABELS = { "V": "V", "?": "?", "S": "✓" };
+const VOTE_TITLES = { "V": "Voglio vederlo", "?": "Indeciso", "S": "Visto" };
+const VOTE_PRIORITY = { "S": 3, "V": 2, "?": 1 }; // two merged copies keep the most interested vote
 const LATE_SHOW_CUTOFF = "06:00"; // shows listed before this hour run after midnight
 const STALE_AFTER_HOURS = 30;
 const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
@@ -18,8 +19,11 @@ const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
 let DATA = null;
 let FILMS = new Map();
 let CINEMAS = new Map();
-let votes = knownVotes(load("cnv.votes", {}));  // film id -> "V" | "?"
+let votes = knownVotes(load("cnv.votes", {}));  // film id -> "V" | "?" | "S"
 let exported = load("cnv.exported", {});  // film id -> date the CSV was imported on Letterboxd
+let seen = load("cnv.seen", {});          // film id -> {date, cinema}: films marked ✓
+let diary = load("cnv.diary", {});        // film id -> date the diary CSV was imported on Letterboxd
+let askCinemaFor = null;                  // film just marked ✓: its box asks where it was seen
 let shownPage = "";                       // HTML of the page on screen, for the minute refresh
 let swipeDirection = "";                  // "next" | "prev": slide-in of the page drawn after a swipe
 let inSalaSeen = new Set();               // V films in sala whose notice was seen (see updateInSalaSeen)
@@ -153,9 +157,24 @@ function voteBox(film) {
     const buttons = VOTES.map((v, i) => {
         const active = votes[film.id] === v;
         return `<button data-vote="${esc(v)}" data-film="${film.id}" class="btn-vote vote-opt-${i + 1}${active ? " active" : ""}"
-            title="${active ? "Togli il voto" : VOTE_TITLES[v]}">${esc(v)}</button>`;
+            title="${active ? "Togli il voto" : VOTE_TITLES[v]}">${VOTE_LABELS[v]}</button>`;
     }).join("");
-    return `<div class="vote-buttons" id="vote-${film.id}">${buttons}</div>`;
+    let extra = "";
+    if (votes[film.id] === "S" && askCinemaFor === film.id) {
+        extra = `<div class="seen-ask"><span class="small">Dove l'hai visto?</span>
+            ${seenCinemaChoices(film).map((c) => `<button class="chip" data-seen-cinema="${esc(c.slug)}" data-film="${film.id}">${esc(c.name)}</button>`).join("")}
+            <button class="chip chip-skip" data-seen-cinema="" data-film="${film.id}">Salta</button></div>`;
+    } else if (votes[film.id] === "S" && seen[film.id]) {
+        const where = seen[film.id].cinema ? ` · ${esc(cinemaName(seen[film.id].cinema))}` : "";
+        extra = `<p class="small seen-info">✓ Visto il ${longDate(seen[film.id].date, isoDate(new Date()))}${where}</p>`;
+    }
+    return `<div class="vote-box" id="vote-${film.id}"><div class="vote-buttons">${buttons}</div>${extra}</div>`;
+}
+/** Cinemas that show the film (where it was probably seen), else all of them. */
+function seenCinemaChoices(film) {
+    const slugs = new Set(DATA.shows.filter((s) => s.f === film.id).map((s) => s.c));
+    const list = DATA.cinemas.filter((c) => slugs.has(c.slug));
+    return list.length ? list : DATA.cinemas;
 }
 function salaShows(s) {
     const times = s.shows.map((show) =>
@@ -496,11 +515,64 @@ function pageWatchlist() {
     return html;
 }
 
+/** Films marked ✓, latest first. */
+const seenFilms = () => DATA.films.filter((f) => votes[f.id] === "S")
+    .sort((a, b) => ((seen[b.id] || {}).date || "").localeCompare((seen[a.id] || {}).date || "") || a.title.localeCompare(b.title));
+/** Seen films that go in the next diary file: without TMDB they cannot be imported. */
+const toDiary = () => seenFilms().filter((f) => !diary[f.id] && f.tmdb);
+
+function pageVisti() {
+    const films = seenFilms();
+    const ready = toDiary();
+    const missing = films.filter((f) => !diary[f.id] && !f.tmdb);
+    const today = isoDate(new Date());
+    let html = `<header class="page-header"><h1>Visti</h1>
+        <p class="subtitle">Film segnati ✓: giorno e cinema si possono correggere qui. Da qui vanno nel diario di Letterboxd.</p></header>`;
+    if (ready.length) {
+        html += `<section class="export-box"><h2>Da mettere nel diario <span class="count">${ready.length}</span></h2>
+            <ol class="steps"><li>Scarica il file CSV.</li>
+            <li>Su Letterboxd: Impostazioni → Importa ed esporta → Importa i tuoi dati. Ogni film diventa una voce del diario con la sua data.</li>
+            <li>Torna qui e segnali come importati, così non finiscono nel prossimo file.</li></ol>
+            <div class="export-actions">
+                <button class="btn btn-export" data-action="export-diary">📥 Scarica CSV per il diario</button>
+                <button class="btn" data-action="mark-diary">✓ Li ho importati su Letterboxd</button>
+            </div></section>`;
+    }
+    if (missing.length) {
+        html += `<section class="notice"><p><b>${missing.length} film senza abbinamento TMDB</b> non sono nel file:
+            ${missing.map((f) => `<i>${esc(f.title)}</i>`).join(", ")}. Sistemali dalla versione di CNV sul PC.</p></section>`;
+    }
+    if (!films.length) {
+        return html + `<p class="empty-state">Nessun film visto per ora.<br>Quando vedi un film al cinema, segnalo con <strong>✓</strong>.</p>`;
+    }
+    return html + `<ul class="seen-list">${films.map((f) => {
+        const info = seen[f.id] || {};
+        const options = `<option value="">Cinema?</option>` + DATA.cinemas.map((c) =>
+            `<option value="${esc(c.slug)}"${c.slug === info.cinema ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+        const state = diary[f.id]
+            ? `Nel diario di Letterboxd <button class="btn btn-small" data-action="diary-again" data-film="${f.id}">Esporta di nuovo</button>`
+            : f.tmdb ? "Da mettere nel diario" : "Senza abbinamento TMDB";
+        return `<li class="seen-row">${poster(f, "thumb")}<div class="seen-row-info">
+            <a href="#/film/${f.id}" class="film-title-link"><b>${esc(f.title)}</b></a>
+            <div class="seen-edit">
+                <input type="date" data-seen-date="${f.id}" value="${esc(info.date || "")}" max="${today}" aria-label="Giorno in cui l'hai visto">
+                <select data-seen-where="${f.id}" aria-label="Cinema">${options}</select>
+            </div>
+            <span class="small">${state}</span></div></li>`;
+    }).join("")}</ul>`;
+}
+
+function diaryCsv() {
+    const quote = (s) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const rows = toDiary().map((f) => [f.tmdb, quote(f.title), f.year || "", (seen[f.id] || {}).date || ""].join(","));
+    return ["tmdbID,Title,Year,WatchedDate", ...rows].join("\n") + "\n";
+}
+
 function pageVoti() {
     const count = Object.keys(votes).length;
     return `<header class="page-header"><h1>I tuoi voti</h1>
         <p class="subtitle">I voti sono salvati solo su questo telefono. Fai ogni tanto una copia: se cambi telefono o cancelli i dati del browser, la ripristini da qui.</p></header>
-        <p>Hai votato <b>${count}</b> film${Object.keys(exported).length ? ` e ne hai esportati <b>${Object.keys(exported).length}</b> su Letterboxd` : ""}.</p>
+        <p>Hai votato <b>${count}</b> film${Object.keys(exported).length ? ` e ne hai esportati <b>${Object.keys(exported).length}</b> su Letterboxd` : ""}. La copia contiene anche i film visti.</p>
         <div class="backup-actions">
             <button class="btn btn-primary" data-action="export-votes">💾 Salva una copia dei voti</button>
             <label class="btn">📂 Ripristina da una copia<input type="file" accept="application/json,.json" data-action="import-votes"></label>
@@ -536,6 +608,7 @@ function render(periodic = false) {
         active = "film";
     } else if (path === "/uscita") { page = pageInUscita(ctx, params); active = "uscita"; }
     else if (path === "/watchlist") { page = pageWatchlist(); active = "watchlist"; }
+    else if (path === "/visti") { page = pageVisti(); active = "visti"; }
     else if (path === "/voti") { page = pageVoti(); active = "voti"; }
     else { page = pageInSala(ctx, params); active = "sala"; }
     page = arrivalsNotice(fullCtx) + page;
@@ -572,7 +645,7 @@ function renderNav(ctx, active) {
     const inUscita = DATA.films.filter((f) => f.status === "in_uscita" && cinemaReleases(f, ctx).length).length;
     const watch = toExport().length;
     const links = [["sala", tabHash("/"), "In sala", inSala], ["uscita", tabHash("/uscita"), "In uscita", inUscita],
-        ["watchlist", "#/watchlist", "Watchlist", watch], ["voti", "#/voti", "Voti", 0]];
+        ["watchlist", "#/watchlist", "Watchlist", watch], ["visti", "#/visti", "Visti", toDiary().length], ["voti", "#/voti", "Voti", 0]];
     document.getElementById("nav-links").innerHTML = links.map(([key, href, label, n]) =>
         `<a href="${href}" class="${active === key ? "active" : ""}">${label}${n ? ` <span class="count">${n}</span>` : ""}</a>`).join("");
 }
@@ -621,6 +694,16 @@ document.addEventListener("click", (e) => {
         const id = Number(vote.dataset.film);
         if (votes[id] === vote.dataset.vote) delete votes[id]; else votes[id] = vote.dataset.vote;
         save("cnv.votes", votes);
+        if (votes[id] === "S") {
+            seen[id] = { date: programmeDay(new Date()), cinema: null }; // after midnight: last night
+            askCinemaFor = id;
+        } else {
+            delete seen[id];
+            delete diary[id];
+            if (askCinemaFor === id) askCinemaFor = null;
+        }
+        save("cnv.seen", seen);
+        save("cnv.diary", diary);
         if (votes[id] === "V" && FILMS.get(id).status === "in_sala") {
             inSalaSeen.add(id); // voted while in sala: no notice needed
             save("cnv.inSalaSeen", [...inSalaSeen]);
@@ -628,8 +711,28 @@ document.addEventListener("click", (e) => {
         document.querySelectorAll(`#vote-${id}`).forEach((box) => { box.outerHTML = voteBox(FILMS.get(id)); });
         return;
     }
+    const where = e.target.closest("[data-seen-cinema]");
+    if (where) {
+        const id = Number(where.dataset.film);
+        if (seen[id]) seen[id].cinema = where.dataset.seenCinema || null;
+        save("cnv.seen", seen);
+        askCinemaFor = null;
+        document.querySelectorAll(`#vote-${id}`).forEach((box) => { box.outerHTML = voteBox(FILMS.get(id)); });
+        return;
+    }
     const action = e.target.closest("[data-action]")?.dataset.action;
     const today = isoDate(new Date());
+    if (action === "export-diary") download(`letterboxd_diario_${today}.csv`, "text/csv", diaryCsv());
+    if (action === "mark-diary" && confirm("Hai importato il file su Letterboxd?")) {
+        toDiary().forEach((f) => { diary[f.id] = today; });
+        save("cnv.diary", diary);
+        render();
+    }
+    if (action === "diary-again") {
+        delete diary[Number(e.target.closest("[data-film]").dataset.film)];
+        save("cnv.diary", diary);
+        render();
+    }
     if (action === "dismiss-arrivals") {
         vArrivals(buildContext(new Date())).forEach((f) => inSalaSeen.add(f.id));
         save("cnv.inSalaSeen", [...inSalaSeen]);
@@ -647,7 +750,7 @@ document.addEventListener("click", (e) => {
         render();
     }
     if (action === "export-votes") {
-        download(`cnv-voti-${today}.json`, "application/json", JSON.stringify({ votes, exported, saved_at: today }, null, 1));
+        download(`cnv-voti-${today}.json`, "application/json", JSON.stringify({ votes, exported, seen, diary, saved_at: today }, null, 1));
     }
 });
 
@@ -659,6 +762,16 @@ document.addEventListener("input", (e) => {
 });
 
 document.addEventListener("change", (e) => {
+    // "Visti" page: day and cinema of a seen film
+    const dateOf = e.target.dataset.seenDate, whereOf = e.target.dataset.seenWhere;
+    if (dateOf || whereOf) {
+        const id = Number(dateOf || whereOf);
+        seen[id] = seen[id] || { date: null, cinema: null };
+        if (dateOf && e.target.value) seen[id].date = e.target.value;
+        if (whereOf) seen[id].cinema = e.target.value || null;
+        save("cnv.seen", seen);
+        return;
+    }
     if (e.target.matches("select[data-filter]")) {
         const { path, params } = route();
         location.hash = filterHash(path, params, { [e.target.dataset.filter]: e.target.value || null });
@@ -672,8 +785,12 @@ document.addEventListener("change", (e) => {
         if (!confirm(`Ripristinare ${Object.keys(restored).length} voti? Quelli attuali verranno sostituiti.`)) return;
         votes = restored;
         exported = backup.exported || {};
+        seen = backup.seen || {};
+        diary = backup.diary || {};
         save("cnv.votes", votes);
         save("cnv.exported", exported);
+        save("cnv.seen", seen);
+        save("cnv.diary", diary);
         render();
     }).catch((err) => alert(`Copia dei voti non valida (${err.message}).`));
 });
@@ -682,7 +799,7 @@ window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); }
 
 // ------------------------------------------------------------------ swipe between pages
 
-const TABS = ["#/", "#/uscita", "#/watchlist", "#/voti"]; // same order as the menu
+const TABS = ["#/", "#/uscita", "#/watchlist", "#/visti", "#/voti"]; // same order as the menu
 const SWIPE_MIN = 70;   // px sideways to change page
 const SWIPE_EDGE = 24;  // touches starting this close to the screen edge are Android's "back" gesture
 let swipe = null;       // the touch in progress: {x, y, horizontal}
@@ -762,10 +879,19 @@ function applyMerges(merged) {
             delete exported[old];
             changed = true;
         }
+        for (const map of [seen, diary]) {
+            if (map[old]) {
+                map[target] = map[target] || map[old];
+                delete map[old];
+                changed = true;
+            }
+        }
     }
     if (changed) {
         save("cnv.votes", votes);
         save("cnv.exported", exported);
+        save("cnv.seen", seen);
+        save("cnv.diary", diary);
     }
 }
 
@@ -773,7 +899,7 @@ function applyMerges(merged) {
 function prunePosters() {
     if (!("caches" in window)) return;
     const shown = new Set(toExport());
-    const keep = new Set(DATA.films.filter((f) => f.status !== "uscito" || shown.has(f)).map((f) => f.poster));
+    const keep = new Set(DATA.films.filter((f) => f.status !== "uscito" || shown.has(f) || votes[f.id] === "S").map((f) => f.poster));
     caches.open(POSTER_CACHE)
         .then((cache) => cache.keys().then((requests) =>
             Promise.all(requests.filter((r) => !keep.has(r.url)).map((r) => cache.delete(r)))))
