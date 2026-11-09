@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+from collections import Counter
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -736,13 +737,73 @@ def edit_seen(
     return RedirectResponse("/visti", status_code=303)
 
 
+@dataclass
+class StatRow:
+    label: str
+    count: int
+
+
+@dataclass
+class SeenStats:
+    total: int
+    this_month: int
+    top_cinema: str | None
+    top_genre: str | None
+    by_month: list[StatRow]  # oldest first, at most the last 12 months
+    by_cinema: list[StatRow]  # most seen first, "non indicato" last
+    by_genre: list[StatRow]
+
+    @property
+    def max_month(self) -> int:
+        return max((r.count for r in self.by_month), default=0) or 1
+
+
+NOT_GIVEN_CINEMA = "Non indicato"
+UNKNOWN_GENRE = "Non noto"
+
+
+def _ranked(counter: Counter, last: str) -> list[StatRow]:
+    """Rows by count (then name), with the "unknown" row at the end."""
+    rows = sorted(((k, n) for k, n in counter.items() if k != last), key=lambda kn: (-kn[1], kn[0]))
+    if counter.get(last):
+        rows.append((last, counter[last]))
+    return [StatRow(label, n) for label, n in rows]
+
+
+def _seen_stats(films: list[Film], today: date) -> SeenStats | None:
+    """How many films were seen per month, cinema and genre."""
+    if not films:
+        return None
+    months = Counter((f.seen_on.year, f.seen_on.month) for f in films if f.seen_on)
+    # From the first month with a film seen to this one, at most the last 12 (months counted from year 0)
+    this_month = today.year * 12 + today.month - 1
+    first_month = max(min((y * 12 + m - 1 for y, m in months), default=this_month), this_month - 11)
+    by_month = [
+        StatRow(f"{MONTHS[i % 12][:3]} {i // 12}", months.get((i // 12, i % 12 + 1), 0))
+        for i in range(first_month, this_month + 1)
+    ]
+    cinemas = Counter(f.seen_cinema.name if f.seen_cinema else NOT_GIVEN_CINEMA for f in films)
+    genres = Counter(f.genre if f.has_tmdb_details and f.genre else UNKNOWN_GENRE for f in films)
+    by_cinema, by_genre = _ranked(cinemas, NOT_GIVEN_CINEMA), _ranked(genres, UNKNOWN_GENRE)
+    return SeenStats(
+        total=len(films),
+        this_month=months.get((today.year, today.month), 0),
+        top_cinema=next((r.label for r in by_cinema if r.label != NOT_GIVEN_CINEMA), None),
+        top_genre=next((r.label for r in by_genre if r.label != UNKNOWN_GENRE), None),
+        by_month=by_month,
+        by_cinema=by_cinema,
+        by_genre=by_genre,
+    )
+
+
 @router.get("/visti", response_class=HTMLResponse)
 def seen_page(request: Request, db: Session = Depends(get_db)):
-    """Films marked seen: day and cinema (editable) and the export to the Letterboxd diary."""
+    """Films marked seen: statistics, day and cinema (editable) and the export to the Letterboxd diary."""
     seen = export_service.seen_films(db)
     return _render(
         request, db, "visti.html", "visti",
         seen=seen,
+        stats=_seen_stats(seen, _now().date()),
         to_export=[f for f in seen if not f.diary_exported and f.is_tmdb_confirmed],
         missing_tmdb=[f for f in seen if not f.diary_exported and not f.is_tmdb_confirmed],
         cinemas=db.query(Cinema).order_by(Cinema.name).all(),

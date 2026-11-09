@@ -17,3 +17,8 @@ body { overflow-x: hidden; }
 @media (prefers-reduced-motion: reduce) {
     #app, #app.swipe-next, #app.swipe-prev { transition: none; animation: none; }
 }
+
+/* Menu on one line: with five pages and their counts it scrolls sideways instead of wrapping */
+.nav-links { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0.25rem 0.9rem; }
+.nav-links::-webkit-scrollbar { display: none; }
+.nav-links a { white-space: nowrap; }

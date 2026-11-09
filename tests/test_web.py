@@ -823,3 +823,34 @@ def test_seen_page_and_letterboxd_diary(client, session, cinema):
     client.post(f"/film/{seen.id}/diario-di-nuovo")
     session.expire_all()
     assert not session.get(Film, seen.id).diary_exported
+
+
+def test_seen_statistics(client, session, cinema):
+    from app.web.routes import _seen_stats
+
+    garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
+    session.add(garden)
+    session.commit()
+    sure = dict(tmdb_match_status="abbinato")
+    add_film(session, "A", "uscito", [], cinema, vote="S", seen_on=date(2026, 10, 3), seen_cinema_id=cinema.id,
+             tmdb_id=1, genre="Horror", details_tmdb_id=1, **sure)
+    add_film(session, "B", "uscito", [], cinema, vote="S", seen_on=date(2026, 10, 9), seen_cinema_id=cinema.id,
+             tmdb_id=2, genre="Commedia", details_tmdb_id=2, **sure)
+    add_film(session, "C", "uscito", [], cinema, vote="S", seen_on=date(2026, 8, 20), seen_cinema_id=garden.id,
+             tmdb_id=3, genre="Horror", details_tmdb_id=3, **sure)
+    add_film(session, "D", "uscito", [], cinema, vote="S", seen_on=date(2025, 1, 5))  # older than a year, no cinema
+
+    stats = _seen_stats([f for f in session.query(Film)], TODAY)
+    assert (stats.total, stats.this_month, stats.top_cinema, stats.top_genre) == (4, 2, "Andromeda River", "Horror")
+    assert [(r.label, r.count) for r in stats.by_month] == [
+        ("nov 2025", 0), ("dic 2025", 0), ("gen 2026", 0), ("feb 2026", 0), ("mar 2026", 0), ("apr 2026", 0),
+        ("mag 2026", 0), ("giu 2026", 0), ("lug 2026", 0), ("ago 2026", 1), ("set 2026", 0), ("ott 2026", 2),
+    ]  # the last 12 months only
+    assert [(r.label, r.count) for r in stats.by_cinema] == [
+        ("Andromeda River", 2), ("Cinema Garden (Rende)", 1), ("Non indicato", 1),
+    ]
+    assert [(r.label, r.count) for r in stats.by_genre] == [("Horror", 2), ("Commedia", 1), ("Non noto", 1)]
+
+    page = client.get("/visti").text
+    assert "Statistiche" in page and 'title="ott 2026: 2 film"' in page and "cinema più frequentato" in page
+    assert _seen_stats([], TODAY) is None
