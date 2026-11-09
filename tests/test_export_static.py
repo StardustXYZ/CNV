@@ -87,3 +87,10 @@ def test_build_data_runtime_and_genre_only_for_the_confirmed_match(db):
     films = {f["id"]: f for f in build_data(db, today=TODAY, now=NOW)["films"]}
     assert (films[clay.id]["runtime"], films[clay.id]["genre"]) == (115, "Horror")
     assert (films[doubt.id]["runtime"], films[doubt.id]["genre"]) == (None, None)
+
+
+def test_build_data_has_the_first_day_each_film_was_shown(db):
+    clay, doubt = _seed(db)
+    films = {f["id"]: f for f in build_data(db, today=TODAY, now=NOW)["films"]}
+    assert films[clay.id]["since"] == "2026-10-20"  # its oldest show, even if too old to be exported
+    assert films[doubt.id]["since"] is None  # only announced

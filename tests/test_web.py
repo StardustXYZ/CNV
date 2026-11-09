@@ -251,12 +251,21 @@ def test_home_after_midnight_keeps_the_evening_programme(client, session, cinema
     assert [s.split('"')[0] for s in html.split('data-show-at="')[1:]] == ["2026-10-18T01:15"]
 
 
-def test_home_lists_films_still_showing_today_first(client, session, cinema):
-    add_film(session, "Aaa finito per oggi", "in_sala", [1], cinema)  # only tomorrow
-    add_film(session, "Zzz stasera", "in_sala", [0], cinema)  # 21:00 today
+def test_home_lists_the_latest_arrivals_first(client, session, cinema):
+    add_film(session, "Aaa da settimane", "in_sala", [-20, 0], cinema)  # first shown on 27/9
+    add_film(session, "Mmm da ieri", "in_sala", [-1, 0], cinema)
+    add_film(session, "Zzz anche da ieri", "in_sala", [-1, 0], cinema)
 
     html = client.get("/").text
-    assert html.index("Zzz stasera") < html.index("Aaa finito per oggi")
+    grid = html[html.index('class="film-grid"'):]
+    assert grid.index("Mmm da ieri") < grid.index("Zzz anche da ieri") < grid.index("Aaa da settimane")
+    assert "In sala dal 16 ottobre" in grid and "In sala dal 27 settembre" in grid
+
+
+def test_home_shows_tomorrow_when_today_is_over(client, session, cinema):
+    add_film(session, "Aaa finito per oggi", "in_sala", [1], cinema)  # only tomorrow
+
+    html = client.get("/").text
     # Nothing left today: tomorrow's shows instead, labelled as such
     tomorrow = html[html.index("Aaa finito per oggi"):]
     assert "Prossimi spettacoli: domani" in tomorrow

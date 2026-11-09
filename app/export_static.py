@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 import shutil
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import ROOT_DIR, settings
@@ -52,6 +53,8 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         {"f": c.film_id, "c": slug_by_id[c.cinema_id], "d": c.release_date.isoformat() if c.release_date else None}
         for c in db.query(ComingSoon)
     ]
+    # First day each film was screened here: the phone puts the latest arrivals first
+    since = dict(db.query(Showtime.film_id, func.min(Showtime.date)).group_by(Showtime.film_id))
     films = [
         {
             "id": f.id,
@@ -65,6 +68,7 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
             "event": bool(f.is_event),
             "last_seen": f.last_seen_date.isoformat() if f.last_seen_date else None,
             "left": f.left_theaters_date.isoformat() if f.left_theaters_date else None,
+            "since": since[f.id].isoformat() if f.id in since else None,
         }
         for f in db.query(Film).order_by(Film.id)
     ]

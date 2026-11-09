@@ -255,6 +255,7 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 .cinema a:hover { text-decoration: underline; }
 .no-shows { font-style: italic; }
 .today-label.next-day { color: var(--accent); }
+.in-sala-since { margin-top: -0.2rem; }
 
 /* ---- No longer programmed ---- */
 .gone-section { margin-top: 2rem; background: var(--surface); border-radius: var(--radius); padding: 0.75rem 1rem; }

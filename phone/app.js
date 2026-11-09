@@ -205,8 +205,10 @@ function filmCard(film, ctx, mode) {
             ${!r.date ? `<span class="small">data da definire</span>` : r.date !== first ? `<span class="small">dal ${longDate(r.date, ctx.day)}</span>` : ""}
         </li>`).join("")}</ul>`;
     }
+    const since = mode === "oggi" && film.since
+        ? `<p class="small in-sala-since" title="Primo giorno di programmazione a Cosenza e Rende">In sala dal ${longDate(film.since, ctx.day)}</p>` : "";
     return `<article class="film-card">${poster(film, "poster")}
-        <div class="film-info"><h3>${esc(film.title)}</h3>${meta(film)}${body}${voteBox(film)}</div>
+        <div class="film-info"><h3>${esc(film.title)}</h3>${meta(film)}${since}${body}${voteBox(film)}</div>
     </article>`;
 }
 
@@ -244,7 +246,7 @@ function pageInSala(ctx, params) {
     if (voto === "nessuno") films = films.filter((f) => !votes[f.id]);
     else if (VOTES.includes(voto)) films = films.filter((f) => votes[f.id] === voto);
     const showing = films.filter((f) => hasShows(f, ctx))
-        .sort((a, b) => ctx.next.get(a.id).day.localeCompare(ctx.next.get(b.id).day) || a.title.localeCompare(b.title));
+        .sort((a, b) => (b.since || "").localeCompare(a.since || "") || a.title.localeCompare(b.title)); // latest arrivals first
     const gone = films.filter((f) => !hasShows(f, ctx)).sort((a, b) => a.title.localeCompare(b.title));
 
     const chips = filters.map(([value, label]) =>
