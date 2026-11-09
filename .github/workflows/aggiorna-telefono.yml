@@ -1,4 +1,4 @@
-# CNV sul telefono: ogni mattina aggiorna i dati e pubblica il sito su GitHub Pages.
+# CNV sul telefono: ogni notte aggiorna i dati e pubblica il sito su GitHub Pages.
 #
 # 1. recupera il database dal ramo "dati" (se esiste già)
 # 2. fa il sync: siti dei cinema, prossimamente, TMDB, stati dei film
@@ -10,13 +10,18 @@ name: Aggiorna CNV per il telefono
 
 on:
   schedule:
-    - cron: "15 5 * * *"   # ogni giorno alle 05:15 UTC (06:15 o 07:15 in Italia)
+    # GitHub fa partire gli orari programmati anche con ore di ritardo (a novembre 2026
+    # il giro delle 05:15 UTC partiva tra le 11:45 e le 13:10): due giri di notte, così
+    # i dati sono pronti al mattino e se uno fallisce c'è l'altro. Ore UTC.
+    - cron: "17 1 * * *"   # 02:17 in Italia (03:17 con l'ora legale)
+    - cron: "47 3 * * *"   # 04:47 in Italia (05:47 con l'ora legale)
   workflow_dispatch:         # e a mano: Actions -> Aggiorna CNV per il telefono -> Run workflow
 
 permissions:
   contents: write   # salvare il database nel ramo "dati"
   pages: write
   id-token: write
+  actions: write    # tenere attivo l'aggiornamento automatico (ultimo passo)
 
 concurrency:
   group: aggiorna-telefono
@@ -34,7 +39,7 @@ jobs:
       DATABASE_URL: sqlite:///${{ github.workspace }}/dati/cnv.db
       AUTO_SYNC: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Recupera il database
         run: |
@@ -56,7 +61,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -82,12 +87,26 @@ jobs:
       - name: Costruisci il sito per il telefono
         run: python -m app.export_static --out site
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - name: Pubblica su GitHub Pages
         id: pubblica
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+
+      # In un repository pubblico GitHub mette in pausa gli orari programmati dopo 60 giorni
+      # senza attività. Riattivare il workflow a ogni giro azzera il conto: non serve
+      # nessun commit e, se non riesce, l'aggiornamento di oggi è comunque fatto.
+      - name: Tieni attivo l'aggiornamento automatico
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --silent --show-error -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/aggiorna-telefono.yml/enable"
+          echo "Aggiornamento automatico attivo"

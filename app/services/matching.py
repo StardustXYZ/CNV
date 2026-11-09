@@ -379,6 +379,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     # Only an event if both copies were events: a regular run must not get the short threshold
     survivor.is_event = survivor.is_event and other.is_event
     survivor.letterboxd_exported = survivor.letterboxd_exported or other.letterboxd_exported
+    survivor.in_sala_noticed = survivor.in_sala_noticed or other.in_sala_noticed  # notice seen on either copy
     survivor.exported_at = _latest(survivor.exported_at, other.exported_at)
     if survivor.status != "uscito" or other.status != "uscito":
         # Still programmed somewhere: the sync recomputes the status right after

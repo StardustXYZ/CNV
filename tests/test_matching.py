@@ -400,3 +400,14 @@ def test_manual_match_from_the_details_needs_no_later_fetch(db):
     db.flush()
     confirm_match(db, f, _details(1400837, 92, "Horror"))
     assert f.has_tmdb_details and (f.runtime, f.genre) == (92, "Horror")
+
+
+def test_merge_keeps_the_in_sala_notice_seen_on_either_copy(db):
+    from app.services.matching import merge_films
+
+    survivor = Film(raw_title="Hope", normalized_title="hope", status="in_sala", vote="V")
+    other = Film(raw_title="HOPE (2026)", normalized_title="hope 2026", status="in_sala", vote="V", in_sala_noticed=True)
+    db.add_all([survivor, other])
+    db.flush()
+    merge_films(db, survivor, other)
+    assert survivor.in_sala_noticed  # the "Ora in sala" notice does not come back
