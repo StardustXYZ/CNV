@@ -17,6 +17,8 @@ if errorlevel 1 goto error
 ".venv\Scripts\python.exe" -m app.install_check mark
 
 :start
+rem Se la cartella e' stata spostata, il collegamento sul Desktop perde l'icona: lo ripara
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0crea_collegamento.ps1" -SoloSeSpostato >nul 2>&1
 echo.
 echo Avvio CNV (Chi Ni Vidimu): il browser si apre da solo su http://127.0.0.1:8000
 echo Lascia aperta questa finestra; per chiudere l'app premi Ctrl+C o chiudila.

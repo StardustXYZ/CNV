@@ -426,6 +426,9 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 }
 .filters input[type="search"] { flex: 1 1 12rem; min-width: 0; }
 .filters select { flex: 1 1 9rem; min-width: 0; }
+/* The list that opens is drawn by the system on a white background (Windows):
+   the names must be dark there, not the light text of the closed menu */
+select option { color: #111; background: #fff; }
 .filter-info { margin: -0.5rem 0 1rem; }
 
 /* ---- Release calendar ---- */
@@ -468,9 +471,9 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
     padding: 0.25rem 0.4rem;
     font: inherit;
     font-size: 0.85rem;
-    color-scheme: dark;
     max-width: 100%;
 }
+.seen-edit input[type="date"] { color-scheme: dark; }  /* light calendar icon on the dark box */
 .btn-small { padding: 0.1rem 0.5rem; font-size: 0.75rem; }
 
 /* ---- Statistics of the films seen ---- */
