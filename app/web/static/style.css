@@ -295,8 +295,9 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 .btn-vote.active.vote-opt-2 { background: var(--yellow); border-color: var(--yellow); color: #000; }
 .btn-vote.active.vote-opt-3 { background: var(--accent); border-color: var(--accent); color: #000; }
 .seen-ask { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
-.seen-ask .chip { font-size: 0.75rem; cursor: pointer; }
-.seen-ask .chip-skip { opacity: 0.7; }
+/* Buttons, not links: without their own colours the browser draws them white, under light text */
+.seen-ask .chip { font: inherit; font-size: 0.75rem; cursor: pointer; background: #fff; border-color: #fff; color: #111; font-weight: 600; }
+.seen-ask .chip-skip { background: transparent; border-color: var(--border); color: var(--text-muted); font-weight: 400; }
 .seen-info { color: var(--accent); }
 
 /* ---- Review page ---- */
