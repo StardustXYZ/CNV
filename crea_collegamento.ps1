@@ -1,16 +1,26 @@
 # Crea sul Desktop il collegamento "CNV" con l'icona dell'app.
 # Rilancialo se sposti la cartella del progetto:
 #   powershell -ExecutionPolicy Bypass -File crea_collegamento.ps1
+# Con -SoloSeSpostato (lo usa run.bat a ogni avvio) ripara un collegamento che punta
+# ancora alla vecchia cartella; non crea niente se il collegamento non c'e'.
+param([switch]$SoloSeSpostato)
 
 $project = $PSScriptRoot
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "CNV.lnk"
+$icon = (Join-Path $project "app\web\static\cnv.ico") + ",0"
 
 $shell = New-Object -ComObject WScript.Shell
+if ($SoloSeSpostato) {
+    if (-not (Test-Path $shortcutPath)) { exit 0 }
+    # Windows aggiorna da solo il percorso del programma, non quello dell'icona
+    if ($shell.CreateShortcut($shortcutPath).IconLocation -eq $icon) { exit 0 }
+}
+
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = Join-Path $project "run.bat"
 $shortcut.WorkingDirectory = $project
-$shortcut.IconLocation = (Join-Path $project "app\web\static\cnv.ico") + ",0"
+$shortcut.IconLocation = $icon
 $shortcut.Description = "CNV - Chi Ni Vidimu"
 $shortcut.WindowStyle = 7  # finestra ridotta a icona: il browser si apre da solo
 $shortcut.Save()
