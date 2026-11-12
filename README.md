@@ -21,8 +21,8 @@ Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Un
 1. Installa **Python 3.11 o più recente** da [python.org](https://www.python.org/downloads/) (spunta *Add python.exe to PATH*).
 2. Scarica il progetto:
    ```bash
-   git clone https://github.com/StardustXYZ/CNVTrue.git
-   cd CNVTrue
+   git clone https://github.com/StardustXYZ/CNV.git
+   cd CNV
    ```
 3. Crea una chiave API gratuita su [TMDB](https://www.themoviedb.org/settings/api) e mettila in un file `.env` nella cartella del progetto:
    ```
