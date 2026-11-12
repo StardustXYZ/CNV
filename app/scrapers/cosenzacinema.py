@@ -21,7 +21,7 @@ import httpx
 
 from app.scrapers.base import ITALIAN_MONTHS, BaseScraper, ComingSoonData, ShowtimeData, nearest_date
 
-DEFAULT_USER_AGENT = "CNV/0.1.0 (+https://github.com/StardustXYZ/CNVTrue; personal cinema tracker)"
+DEFAULT_USER_AGENT = "CNV/0.1.0 (+https://github.com/StardustXYZ/CNV; personal cinema tracker)"
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_URL = "https://cosenzacinema.it/"
 
