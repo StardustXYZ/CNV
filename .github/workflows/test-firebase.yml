@@ -1,0 +1,40 @@
+# Prova le regole di accesso di Firestore (firebase/firestore.rules) sull'emulatore, progetto
+# "demo-cnv": mai i dati veri. Parte da sola quando le regole o i loro test cambiano.
+name: Test regole Firebase
+
+on:
+  push:
+    paths:
+      - "firebase/**"
+      - ".github/workflows/test-firebase.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regole:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: firebase
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+
+      - uses: actions/setup-java@v6   # l'emulatore di Firestore è scritto in Java
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Installa gli strumenti di Firebase
+        run: npm ci --no-audit --no-fund
+
+      - name: Test delle regole sull'emulatore
+        run: npm test

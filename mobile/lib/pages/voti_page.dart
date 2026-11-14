@@ -8,6 +8,7 @@ import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/letterboxd_widgets.dart';
+import 'account_page.dart';
 
 /// "Voti": how many films have each vote, and the copy of the votes (save and restore,
 /// also the one made by the web version). Login and notifications come later.
@@ -25,6 +26,7 @@ class VotiPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
+          const AccountSection(),
           const Text('I tuoi voti', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           const Text('Li vedi solo tu e per ora restano su questo telefono.',
