@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'data/programme.dart';
+import 'data/repository.dart';
 import 'pages/page_placeholder.dart';
 import 'theme.dart';
 
@@ -27,9 +29,12 @@ const cnvPages = [
       'La copia dei voti, e più avanti accesso e notifiche.'),
 ];
 
-/// The app's frame: title bar, the pages side by side (swipe to move) and the bottom menu.
+/// The app's frame: title bar with the data status, the pages side by side (swipe to
+/// move) and the bottom menu.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({super.key, this.store});
+
+  final DataStore? store; // given by the tests; the app makes its own
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -37,11 +42,19 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final _pager = PageController();
+  late final DataStore _store = widget.store ?? DataStore(DataRepository());
   int _current = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.store == null) _store.start();
+  }
 
   @override
   void dispose() {
     _pager.dispose();
+    if (widget.store == null) _store.dispose();
     super.dispose();
   }
 
@@ -50,23 +63,59 @@ class _HomeShellState extends State<HomeShell> {
     _pager.animateToPage(index, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
   }
 
+  /// What each page can already say with the data (the full pages arrive in the next phases).
+  List<String?> _summaries() {
+    final data = _store.data;
+    if (data == null) return List.filled(cnvPages.length, null);
+    final programme = Programme.build(data, _store.now);
+    String films(int n) => n == 1 ? '1 film' : '$n film';
+    return [
+      '${films(programme.inSala.length)} in sala con spettacoli in programma',
+      '${films(programme.inUscita.length)} in uscita',
+      null,
+      null,
+      null,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const CnvTitle()),
-      body: PageView(
-        controller: _pager,
-        onPageChanged: (index) => setState(() => _current = index),
-        children: [for (final page in cnvPages) PagePlaceholder(page: page)],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _current,
-        onDestinationSelected: _goTo,
-        destinations: [
-          for (final page in cnvPages)
-            NavigationDestination(icon: Icon(page.icon), selectedIcon: Icon(page.selectedIcon), label: page.label),
-        ],
-      ),
+    return ListenableBuilder(
+      listenable: _store,
+      builder: (context, _) {
+        final summaries = _summaries();
+        return Scaffold(
+          appBar: AppBar(
+            title: const CnvTitle(),
+            actions: [
+              IconButton(
+                tooltip: 'Aggiorna i dati',
+                onPressed: _store.refreshing ? null : _store.refresh,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+            bottom: DataStatusBar(store: _store),
+          ),
+          body: _store.state == LoadState.error
+              ? NoDataMessage(onRetry: _store.refresh, retrying: _store.refreshing)
+              : PageView(
+                  controller: _pager,
+                  onPageChanged: (index) => setState(() => _current = index),
+                  children: [
+                    for (var i = 0; i < cnvPages.length; i++)
+                      PagePlaceholder(page: cnvPages[i], summary: summaries[i], onRefresh: _store.refresh),
+                  ],
+                ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _current,
+            onDestinationSelected: _goTo,
+            destinations: [
+              for (final page in cnvPages)
+                NavigationDestination(icon: Icon(page.icon), selectedIcon: Icon(page.selectedIcon), label: page.label),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -88,6 +137,79 @@ class CnvTitle extends StatelessWidget {
         Text('Chi Ni Vidimu',
             style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: CnvColors.textMuted)),
       ],
+    );
+  }
+}
+
+/// Under the title: when the data was made, and whether it is the saved copy or old.
+class DataStatusBar extends StatelessWidget implements PreferredSizeWidget {
+  const DataStatusBar({super.key, required this.store});
+
+  final DataStore store;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(26);
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+
+  @override
+  Widget build(BuildContext context) {
+    final data = store.data;
+    String text;
+    Color color = CnvColors.textMuted;
+    if (data == null) {
+      text = store.refreshing ? 'Scarico i dati…' : 'Nessun dato';
+    } else {
+      final when = data.generatedAt.toLocal();
+      text = 'Dati aggiornati il ${when.day}/${when.month} alle ${_two(when.hour)}:${_two(when.minute)}';
+      if (store.offline) {
+        text += ' · senza connessione';
+        color = CnvColors.yellow;
+      } else if (store.stale) {
+        text += ' · dati vecchi';
+        color = CnvColors.yellow;
+      }
+    }
+    return SizedBox(
+      height: preferredSize.height,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Expanded(child: Text(text, style: TextStyle(fontSize: 12, color: color), overflow: TextOverflow.ellipsis)),
+            if (store.refreshing && data != null)
+              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// No data at all: never downloaded and no saved copy.
+class NoDataMessage extends StatelessWidget {
+  const NoDataMessage({super.key, required this.onRetry, required this.retrying});
+
+  final VoidCallback onRetry;
+  final bool retrying;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off, size: 48, color: CnvColors.textMuted),
+            const SizedBox(height: 12),
+            const Text('Non riesco a scaricare i dati.\nControlla la connessione e riprova.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.4)),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: retrying ? null : onRetry, child: Text(retrying ? 'Riprovo…' : 'Riprova')),
+          ],
+        ),
+      ),
     );
   }
 }
