@@ -40,11 +40,19 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
-    // The account's own data: votes, films seen, what already went to Letterboxd. Nobody
-    // else sees it, not even the administrator
+    // The account's own data: votes, films seen, what already went to Letterboxd, and which
+    // notifications it wants ("notify": all, v or off). Nobody else sees it, not even the
+    // administrator
     match /utenti/{uid} {
       allow read, delete: if isUser(uid);
       allow create, update: if isUser(uid) && validPersonal(request.resource.data);
+    }
+
+    // The account's phones, for the notifications: one document per installation of the
+    // app with its messaging token. GitHub reads them (and removes the ones that are gone)
+    match /utenti/{uid}/telefoni/{phone} {
+      allow read, delete: if isUser(uid);
+      allow create, update: if isUser(uid) && validPhone(phone, request.resource.data);
     }
 
     function validAllowList(d) {
@@ -53,12 +61,20 @@ service cloud.firestore {
 
     // The same shape as the copy of the votes: maps by film code, plus when it was saved
     function validPersonal(p) {
-      return p.keys().hasOnly(['votes', 'seen', 'exported', 'diary', 'updated'])
+      return p.keys().hasOnly(['votes', 'seen', 'exported', 'diary', 'updated', 'notify'])
         && (!('votes' in p) || (p.votes is map && p.votes.size() <= 5000))
         && (!('seen' in p) || (p.seen is map && p.seen.size() <= 5000))
         && (!('exported' in p) || (p.exported is map && p.exported.size() <= 5000))
         && (!('diary' in p) || (p.diary is map && p.diary.size() <= 5000))
-        && (!('updated' in p) || p.updated is timestamp);
+        && (!('updated' in p) || p.updated is timestamp)
+        && (!('notify' in p) || p.notify in ['all', 'v', 'off']);
+    }
+
+    function validPhone(phone, t) {
+      return phone.matches('^[A-Za-z0-9_-]{8,64}$')
+        && t.keys().hasOnly(['token', 'updated'])
+        && t.token is string && t.token.size() > 0 && t.token.size() <= 4096
+        && (!('updated' in t) || t.updated is timestamp);
     }
   }
 }

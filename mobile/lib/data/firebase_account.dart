@@ -122,6 +122,24 @@ class FirebaseAccountBackend implements AccountBackend {
   @override
   PersonalRemote personalRemote(String uid) => FirebasePersonalRemote(_db.doc('utenti/$uid'));
 
+  @override
+  Future<String?> notifyMode(String uid) async {
+    final snap = await _db.doc('utenti/$uid').get();
+    final mode = snap.data()?['notify'];
+    return mode is String ? mode : null;
+  }
+
+  @override
+  Future<void> setNotifyMode(String uid, String mode) =>
+      _db.doc('utenti/$uid').set({'notify': mode}, SetOptions(merge: true));
+
+  @override
+  Future<void> savePhone(String uid, String phone, String token) =>
+      _db.doc('utenti/$uid/telefoni/$phone').set({'token': token, 'updated': FieldValue.serverTimestamp()});
+
+  @override
+  Future<void> removePhone(String uid, String phone) => _db.doc('utenti/$uid/telefoni/$phone').delete();
+
   static Future<void> _guard(Future<void> Function() action) async {
     try {
       await action();

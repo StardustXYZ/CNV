@@ -50,6 +50,12 @@ abstract class AccountBackend {
 
   /// The account copy of the votes of [uid].
   PersonalRemote personalRemote(String uid);
+
+  /// Notifications: the account's choice (utenti/{uid}.notify) and its phones.
+  Future<String?> notifyMode(String uid);
+  Future<void> setNotifyMode(String uid, String mode);
+  Future<void> savePhone(String uid, String phone, String token);
+  Future<void> removePhone(String uid, String phone);
 }
 
 /// The account part of the app: who is signed in and whether it is admitted.
@@ -70,6 +76,9 @@ class AccountStore extends ChangeNotifier {
   bool busy = false;
 
   bool get isAdmin => allowed != null;
+
+  /// Run before signing out, while still signed in (e.g. to unregister this phone).
+  final beforeSignOut = <Future<void> Function()>[];
 
   /// Where the votes of [uid] are kept in the account (null without Firebase).
   PersonalRemote? remoteFor(String uid) => _backend?.personalRemote(uid);
@@ -130,7 +139,12 @@ class AccountStore extends ChangeNotifier {
   Future<void> register(String email, String password) => _run((b) => b.register(email.trim(), password));
   Future<void> sendPasswordReset(String email) => _run((b) => b.sendPasswordReset(email.trim()));
   Future<void> sendVerification() => _run((b) => b.sendVerification());
-  Future<void> signOut() => _run((b) => b.signOut());
+  Future<void> signOut() => _run((b) async {
+        for (final hook in [...beforeSignOut]) {
+          await hook();
+        }
+        await b.signOut();
+      });
 
   /// "Ho confermato": reads the account again; if the e-mail is now confirmed, checks the list.
   Future<bool> reloadVerified() async {

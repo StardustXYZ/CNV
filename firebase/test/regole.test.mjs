@@ -103,8 +103,29 @@ test("i voti devono avere la forma della copia", async () => {
     await assertSucceeds(setDoc(doc(db, "utenti/amico"), { votes: {} }));
 });
 
+test("ognuno registra i suoi telefoni e sceglie le notifiche", async () => {
+    const db = as("amico");
+    const phone = doc(db, "utenti/amico/telefoni/installazione-123");
+    await assertSucceeds(setDoc(phone, { token: "fcm-token", updated: serverTimestamp() }));
+    await assertSucceeds(getDoc(phone));
+    await assertSucceeds(deleteDoc(phone));
+    await assertSucceeds(setDoc(doc(db, "utenti/amico"), { notify: "v" }, { merge: true }));
+    await assertFails(setDoc(doc(db, "utenti/amico"), { notify: "sempre" }, { merge: true }));
+    await assertFails(setDoc(phone, { token: "" }));
+    await assertFails(setDoc(phone, { token: "x", altro: 1 }));
+    await assertFails(setDoc(doc(db, "utenti/amico/telefoni/a b"), { token: "x" }));
+});
+
+test("nessuno vede i telefoni di un altro; chi è fuori dalla lista non ne registra", async () => {
+    await seed("utenti/amico/telefoni/installazione-123", { token: "fcm-token" });
+    await assertFails(getDoc(doc(as("capo"), "utenti/amico/telefoni/installazione-123")));
+    await assertFails(setDoc(doc(as("capo"), "utenti/amico/telefoni/installazione-999"), { token: "mio" }));
+    await assertFails(setDoc(doc(as("estraneo"), "utenti/estraneo/telefoni/installazione-123"), { token: "x" }));
+});
+
 test("le altre raccolte sono chiuse a tutti", async () => {
     await assertFails(setDoc(doc(as("capo"), "altro/x"), { a: 1 }));
     await assertFails(getDoc(doc(as("capo"), "config/altro")));
     await assertFails(setDoc(doc(as("capo"), "utenti/capo/sotto/x"), { a: 1 }));
+    await assertFails(setDoc(doc(as("capo"), "utenti/capo/telefoni/abcdefgh/altro/x"), { a: 1 }));
 });

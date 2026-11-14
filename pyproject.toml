@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 push = [
     "pywebpush>=2.0",  # notifications on the phone, sent by GitHub Actions (app/push.py)
+    "firebase-admin>=6.5",  # notifications to the Android app (FCM), same place
 ]
 dev = [
     "pytest>=7.4",

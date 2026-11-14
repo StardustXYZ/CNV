@@ -88,6 +88,21 @@ class FakeBackend implements AccountBackend {
 
   @override
   PersonalRemote personalRemote(String uid) => FakeRemote(cloud, uid);
+
+  final notify = <String, String>{}; // uid -> choice
+  final phones = <String, Map<String, String>>{}; // uid -> phone -> token
+
+  @override
+  Future<String?> notifyMode(String uid) async => notify[uid];
+
+  @override
+  Future<void> setNotifyMode(String uid, String mode) async => notify[uid] = mode;
+
+  @override
+  Future<void> savePhone(String uid, String phone, String token) async => (phones[uid] ??= {})[phone] = token;
+
+  @override
+  Future<void> removePhone(String uid, String phone) async => phones[uid]?.remove(phone);
 }
 
 Future<void> settle() => Future<void>.delayed(Duration.zero);
