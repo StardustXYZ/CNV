@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/account.dart';
+import '../data/notifications.dart';
 import '../data/personal.dart';
 import '../theme.dart';
 import '../widgets/letterboxd_widgets.dart' show say;
@@ -11,6 +12,14 @@ class AccountScope extends InheritedNotifier<AccountStore> {
   const AccountScope({super.key, required AccountStore store, required super.child}) : super(notifier: store);
 
   static AccountStore of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AccountScope>()!.notifier!;
+}
+
+/// Gives the pages the notifications, when Firebase is there (null otherwise, as in the tests).
+class NotificationScope extends InheritedNotifier<NotificationStore> {
+  const NotificationScope({super.key, required NotificationStore? store, required super.child}) : super(notifier: store);
+
+  static NotificationStore? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<NotificationScope>()?.notifier;
 }
 
 /// Runs an account action and shows its error, if any.
@@ -122,6 +131,7 @@ class AccountSection extends StatelessWidget {
             ));
           case Admission.admitted:
             children.add(const SyncStatus());
+            children.add(const NotificationsBox());
           case Admission.notAdmitted:
             text('Non sei ancora nella lista degli ammessi: chiedi a chi ti ha dato CNV di aggiungere ${user.email}, '
                 'poi tocca “Riprova”.', color: CnvColors.yellow);
@@ -430,6 +440,45 @@ class SyncStatus extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: OutlinedButton(onPressed: personal.reconnect, child: const Text('Riprova a collegare i voti')),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Notifiche": every film new in theaters, only the ones marked V, or none.
+class NotificationsBox extends StatelessWidget {
+  const NotificationsBox({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = NotificationScope.of(context);
+    if (store == null) return const SizedBox();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Notifiche', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          const Text('Ogni mattina, quando arrivano film nuovi in sala. Con “Solo i miei V” solo quelli che hai segnato V.',
+              style: TextStyle(fontSize: 12, color: CnvColors.textMuted, height: 1.35)),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            showSelectedIcon: false,
+            segments: [
+              for (final m in notifyModes) ButtonSegment(value: m, label: Text(notifyLabels[m]!, textAlign: TextAlign.center)),
+            ],
+            selected: {store.mode},
+            onSelectionChanged: store.ready && !store.busy ? (s) => store.setMode(s.first) : null,
+          ),
+          if (store.loading || store.busy)
+            const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
+          if (store.problem != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(store.problem!, style: const TextStyle(fontSize: 12, color: CnvColors.yellow, height: 1.35)),
             ),
         ],
       ),

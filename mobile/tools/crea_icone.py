@@ -1,8 +1,8 @@
 """Draw the Android icons of CNV: the white clapperboard on the purple gradient of the web app.
 
 Writes into android/app/src/main/res/ the classic icon (old Android versions), the two
-layers of the adaptive icon (Android shapes it as a circle, squircle…) and the single-colour
-version for themed icons (Android 13+). The PNG files are committed, so this runs only when
+layers of the adaptive icon (Android shapes it as a circle, squircle…), the single-colour
+version for themed icons (Android 13+) and the small white icon of the notifications. The PNG files are committed, so this runs only when
 the icon changes. Needs Pillow (pip install pillow).
 
 Usage, from the mobile/ folder:
@@ -114,6 +114,10 @@ def main() -> None:
         # Only the middle 66 of 108 is always visible: the clapperboard stays inside it
         clapperboard(layer, 0.70).save(folder / "ic_launcher_foreground.png", optimize=True)
         clapperboard(layer, 0.70, mono=True).save(folder / "ic_launcher_monochrome.png", optimize=True)
+        # Notifications: 24 dp, white on transparent (Android colours it), almost edge to edge
+        small = RES / f"drawable-{name}"
+        small.mkdir(parents=True, exist_ok=True)
+        clapperboard(round(24 * density), 0.92, mono=True).save(small / "ic_notifica.png", optimize=True)
 
     adaptive = RES / "mipmap-anydpi-v26"
     adaptive.mkdir(parents=True, exist_ok=True)
