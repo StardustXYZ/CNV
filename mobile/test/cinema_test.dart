@@ -18,7 +18,7 @@ Future<void> openApp(WidgetTester tester, {DateTime? now}) async {
 Finder inMenu(String text) => find.descendant(of: find.byType(Drawer), matching: find.text(text));
 
 Future<void> openMenu(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Open navigation menu'));
+  await tester.tap(find.byTooltip('Apri il menu di navigazione'));
   await tester.pumpAndSettle();
 }
 

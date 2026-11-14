@@ -5,7 +5,9 @@ import 'pages/cinema_page.dart';
 import 'pages/in_sala_page.dart';
 import 'pages/in_uscita_page.dart';
 import 'pages/page_placeholder.dart';
+import 'pages/visti_page.dart';
 import 'pages/voti_page.dart';
+import 'pages/watchlist_page.dart';
 import 'theme.dart';
 
 /// One page of the app, as listed in the bottom menu.
@@ -86,8 +88,8 @@ class _HomeShellState extends State<HomeShell> {
                   children: [
                     if (ready) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
                     if (ready) InUscitaPage(store: _store) else PagePlaceholder(page: cnvPages[1]),
-                    // Watchlist and seen films arrive in the next piece (4b)
-                    for (var i = 2; i < 4; i++) PagePlaceholder(page: cnvPages[i], onRefresh: _store.refresh),
+                    if (ready) WatchlistPage(store: _store) else PagePlaceholder(page: cnvPages[2]),
+                    if (ready) VistiPage(store: _store) else PagePlaceholder(page: cnvPages[3]),
                     VotiPage(store: _store),
                   ],
                 ),

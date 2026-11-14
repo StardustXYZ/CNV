@@ -1,15 +1,13 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../data/personal.dart';
 import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
+import '../widgets/letterboxd_widgets.dart';
 
 /// "Voti": how many films have each vote, and the copy of the votes (save and restore,
 /// also the one made by the web version). Login and notifications come later.
@@ -66,14 +64,8 @@ class VotiPage extends StatelessWidget {
 
   Future<void> _saveCopy(BuildContext context, PersonalStore personal) async {
     final now = store.now;
-    final name = 'cnv-voti-${isoDate(now)}.json';
-    try {
-      final file = File('${(await getTemporaryDirectory()).path}${Platform.pathSeparator}$name');
-      await file.writeAsString(personal.exportJson(savedAt: now.toUtc().toIso8601String()), flush: true);
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path, mimeType: 'application/json')], subject: name));
-    } catch (err) {
-      if (context.mounted) _say(context, 'Non riesco a salvare la copia: $err');
-    }
+    await shareTextFile(context, 'cnv-voti-${isoDate(now)}.json',
+        personal.exportJson(savedAt: now.toUtc().toIso8601String()), 'application/json');
   }
 
   Future<void> _restoreCopy(BuildContext context, PersonalStore personal) async {
@@ -81,7 +73,7 @@ class VotiPage extends StatelessWidget {
     try {
       picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
     } catch (err) {
-      if (context.mounted) _say(context, 'Non riesco ad aprire i file: $err');
+      if (context.mounted) say(context, 'Non riesco ad aprire i file: $err');
       return;
     }
     final bytes = picked?.files.single.bytes;
@@ -89,7 +81,7 @@ class VotiPage extends StatelessWidget {
     final text = utf8.decode(bytes, allowMalformed: true);
     final count = PersonalStore.votesIn(text);
     if (count < 0) {
-      _say(context, 'Il file non è una copia dei voti.');
+      say(context, 'Il file non è una copia dei voti.');
       return;
     }
     final ok = await showDialog<bool>(
@@ -109,14 +101,11 @@ class VotiPage extends StatelessWidget {
       final restored = await personal.importJson(text);
       final merged = store.data?.merged;
       if (merged != null && merged.isNotEmpty) await personal.applyMerges(merged);
-      if (context.mounted) _say(context, 'Ripristinati $restored ${restored == 1 ? 'voto' : 'voti'}.');
+      if (context.mounted) say(context, 'Ripristinati $restored ${restored == 1 ? 'voto' : 'voti'}.');
     } on FormatException catch (err) {
-      if (context.mounted) _say(context, err.message);
+      if (context.mounted) say(context, err.message);
     }
   }
-
-  static void _say(BuildContext context, String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 }
 
 class _CountBox extends StatelessWidget {

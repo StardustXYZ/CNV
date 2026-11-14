@@ -3,7 +3,7 @@ description: "CNV - Chi Ni Vidimu: i film nei cinema di Cosenza e Rende"
 publish_to: 'none' # private app, never published on pub.dev
 
 # versionName+versionCode on Android: raise both for every APK given to friends
-version: 0.6.0+6
+version: 0.7.0+7
 
 environment:
   sdk: ^3.9.2
@@ -12,6 +12,8 @@ dependencies:
   cached_network_image: ^3.4.1
   file_picker: ^11.0.3
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   http: ^1.6.0
   path_provider: ^2.1.5

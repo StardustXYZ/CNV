@@ -95,7 +95,7 @@ void main() {
     expect(find.text('Domani'), findsOneWidget);
     expect(find.text('17:00'), findsOneWidget);
 
-    await tester.pageBack();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Non più in programmazione (1)'), 300, scrollable: pageList());
     await tester.tap(find.text('Non più in programmazione (1)'));

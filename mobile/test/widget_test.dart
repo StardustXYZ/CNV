@@ -60,7 +60,7 @@ void main() {
 
     await tester.tap(find.descendant(of: menu, matching: find.text('Visti')));
     await tester.pumpAndSettle();
-    expect(find.text(cnvPages[3].description), findsOneWidget);
+    expect(find.textContaining('Nessun film visto per ora.'), findsOneWidget); // the Visti page
     expect(tester.widget<NavigationBar>(menu).selectedIndex, 3);
 
     // Finger to the left: the next page, and the menu follows

@@ -14,17 +14,15 @@ const _priority = {'S': 3, 'V': 2, '?': 1}; // two merged copies keep the most i
 class SeenInfo {
   const SeenInfo(this.date, [this.cinema]);
 
-  final String date; // "YYYY-MM-DD"
+  final String? date; // "YYYY-MM-DD"; null only in old copies of the web version
   final String? cinema; // cinema slug, null when not given
 
   Map<String, dynamic> toJson() => {'date': date, 'cinema': cinema};
 
   static SeenInfo? fromJson(Object? j) {
     if (j is! Map) return null;
-    final date = j['date'];
-    if (date is! String) return null;
-    final cinema = j['cinema'];
-    return SeenInfo(date, cinema is String ? cinema : null);
+    final (date, cinema) = (j['date'], j['cinema']);
+    return SeenInfo(date is String ? date : null, cinema is String ? cinema : null);
   }
 }
 
@@ -87,11 +85,38 @@ class PersonalStore extends ChangeNotifier {
     await _save();
   }
 
+  /// Day and cinema of a film marked ✓ (nothing for the others).
   Future<void> setSeen(int film, {String? date, String? cinema, bool clearCinema = false}) async {
+    if (votesById[film] != 'S') return;
     final old = seen[film];
-    if (old == null) return;
-    seen[film] = SeenInfo(date ?? old.date, clearCinema ? null : (cinema ?? old.cinema));
+    seen[film] = SeenInfo(date ?? old?.date, clearCinema ? null : (cinema ?? old?.cinema));
     await _save();
+  }
+
+  /// The watchlist file was imported on Letterboxd: these films stay out of the next one.
+  Future<void> markExported(Iterable<int> films, String today) async {
+    for (final f in films) {
+      exported[f] = today;
+    }
+    await _save();
+  }
+
+  /// The diary file was imported on Letterboxd: these films stay out of the next one.
+  Future<void> markDiary(Iterable<int> films, String today) async {
+    for (final f in films) {
+      diary[f] = today;
+    }
+    await _save();
+  }
+
+  /// "Esporta di nuovo": the film goes back in the next watchlist file.
+  Future<void> exportAgain(int film) async {
+    if (exported.remove(film) != null) await _save();
+  }
+
+  /// "Esporta di nuovo": the film goes back in the next diary file.
+  Future<void> diaryAgain(int film) async {
+    if (diary.remove(film) != null) await _save();
   }
 
   /// Votes given to a duplicate that the sync merged into another film move to that film.
