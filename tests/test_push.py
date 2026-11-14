@@ -1,10 +1,9 @@
-"""Tests for the phone notifications (app/push.py); the push service is faked."""
+"""Tests for the phone notifications (app/push.py); Firebase is faked."""
 
 from __future__ import annotations
 
 import json
 import sys
-import types
 
 from app import push
 from app.db.models import Film
@@ -38,41 +37,6 @@ def test_prepare_keeps_the_message_small(db):
     payload = push.prepare(db)
     assert len(payload["films"]) == push.MAX_FILMS and payload["more"] == 3
     assert len(json.dumps(payload).encode()) < 3000
-
-
-def test_send_uses_the_secrets(monkeypatch):
-    calls = []
-    monkeypatch.setitem(sys.modules, "pywebpush", types.SimpleNamespace(webpush=lambda **kw: calls.append(kw)))
-    push.send({"films": [{"id": 1, "title": "Città"}]}, '{"endpoint": "https://push.example/abc", "keys": {}}', "chiave")
-    (call,) = calls
-    assert call["subscription_info"]["endpoint"] == "https://push.example/abc"
-    assert json.loads(call["data"]) == {"films": [{"id": 1, "title": "Città"}]} and "Città" in call["data"]
-    assert call["vapid_private_key"] == "chiave" and call["vapid_claims"] == {"sub": push.VAPID_CONTACT}
-
-
-def test_send_command_without_secrets_does_nothing(tmp_path, monkeypatch, capsys):
-    message = tmp_path / "notifica.json"
-    message.write_text(json.dumps({"films": [{"id": 1, "title": "Hope"}]}), encoding="utf-8")
-    monkeypatch.delenv("PUSH_SUBSCRIPTION", raising=False)
-    monkeypatch.delenv("VAPID_PRIVATE_KEY", raising=False)
-    monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
-    assert push.main() == 0
-    assert "Notifiche non attive" in capsys.readouterr().out
-
-
-def test_send_command_reports_a_refused_push_without_failing(tmp_path, monkeypatch, capsys):
-    message = tmp_path / "notifica.json"
-    message.write_text(json.dumps({"films": [{"id": 1, "title": "Hope"}]}), encoding="utf-8")
-    monkeypatch.setenv("PUSH_SUBSCRIPTION", "{}")
-    monkeypatch.setenv("VAPID_PRIVATE_KEY", "chiave")
-
-    def refuse(**kw):
-        raise RuntimeError("410 Gone")
-
-    monkeypatch.setitem(sys.modules, "pywebpush", types.SimpleNamespace(webpush=refuse))
-    monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
-    assert push.main() == 0  # the site is already published: a warning, not a failure
-    assert "::warning::Notifica non inviata: 410 Gone" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------- Android app (FCM)
@@ -166,8 +130,7 @@ def test_send_fcm_to_admitted_accounts_that_asked():
 def test_send_command_without_firebase_secret(tmp_path, monkeypatch, capsys):
     message = tmp_path / "notifica.json"
     message.write_text(json.dumps(NEWS), encoding="utf-8")
-    for name in ("FIREBASE_SERVICE_ACCOUNT", "PUSH_SUBSCRIPTION", "VAPID_PRIVATE_KEY"):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("FIREBASE_SERVICE_ACCOUNT", raising=False)
     monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
     assert push.main() == 0
     assert "manca il segreto FIREBASE_SERVICE_ACCOUNT" in capsys.readouterr().out
@@ -177,7 +140,6 @@ def test_send_command_reports_firebase_problems_without_failing(tmp_path, monkey
     message = tmp_path / "notifica.json"
     message.write_text(json.dumps(NEWS), encoding="utf-8")
     monkeypatch.setenv("FIREBASE_SERVICE_ACCOUNT", "{non valido")
-    monkeypatch.delenv("PUSH_SUBSCRIPTION", raising=False)
     monkeypatch.setattr(push, "FirebaseClient", lambda secret: (_ for _ in ()).throw(ValueError("chiave non valida")))
     monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
     assert push.main() == 0
