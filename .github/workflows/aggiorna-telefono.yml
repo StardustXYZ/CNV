@@ -6,8 +6,8 @@
 # 4. costruisce il sito (phone/ + data.json) e lo pubblica su GitHub Pages
 #
 # Serve: repository pubblico, segreto TMDB_API_KEY, Settings -> Pages -> Source: GitHub Actions.
-# Notifiche (facoltative): per l'app Android il segreto FIREBASE_SERVICE_ACCOUNT (la chiave JSON
-# dell'account di servizio di Firebase); per la versione web VAPID_PRIVATE_KEY e PUSH_SUBSCRIPTION.
+# Notifiche dell'app Android (facoltative): segreto FIREBASE_SERVICE_ACCOUNT (la chiave JSON
+# dell'account di servizio di Firebase).
 name: Aggiorna CNV per il telefono
 
 on:
@@ -108,11 +108,9 @@ jobs:
         uses: actions/deploy-pages@v5
 
       # Dopo la pubblicazione, così toccando la notifica si aprono già i dati nuovi
-      - name: Invia le notifiche (app Android e versione web)
+      - name: Invia le notifiche all'app Android
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
-          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: python -m app.push send "$RUNNER_TEMP/notifica.json"
 
       # In un repository pubblico GitHub mette in pausa gli orari programmati dopo 60 giorni

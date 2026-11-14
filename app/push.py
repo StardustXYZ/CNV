@@ -6,15 +6,11 @@ GitHub Actions runs this after the nightly sync, in two steps:
     python -m app.push send notifica.json
 
 ``prepare`` picks the films that became "in sala" since the last notification, marks
-them and writes the message; ``send`` delivers it once the site is published:
+them and writes the message; ``send`` delivers it, once the site is published, to the
+Android app (Firebase Cloud Messaging): every admitted account that turned notifications
+on gets them on its phones, with its V films first (or only those, if it chose so).
 
-* to the Android app (Firebase Cloud Messaging): every admitted account that turned
-  notifications on gets them on its phones, with its V films first (or only those, if it
-  chose so). Needs the secret ``FIREBASE_SERVICE_ACCOUNT``;
-* to the web version (Web Push): needs ``VAPID_PRIVATE_KEY`` (the key the web app's public
-  key pairs with) and ``PUSH_SUBSCRIPTION`` (the code shown on its "Voti" page).
-
-Without the secrets of a channel, that channel does nothing.
+``send`` needs the secret ``FIREBASE_SERVICE_ACCOUNT``; without it, it does nothing.
 """
 
 from __future__ import annotations
@@ -31,10 +27,7 @@ from sqlalchemy.orm import Session
 from app.db.engine import SessionLocal, init_db
 from app.db.models import Film
 
-# Contact for the push service (VAPID "sub"): a site address without a path, as pywebpush requires
-VAPID_CONTACT = "https://stardustxyz.github.io"
-MAX_FILMS = 10  # a push message holds about 4 KB
-TTL_SECONDS = 12 * 3600  # a phone switched off for longer gets nothing: by then the news is old
+MAX_FILMS = 10  # enough for a notification; the rest is counted ("e altri 3")
 
 
 def _title(film: Film) -> str:
@@ -67,23 +60,10 @@ def prepare(db: Session, test: bool = False) -> dict:
     return {}
 
 
-def send(payload: dict, subscription: str, private_key: str) -> None:
-    """Deliver the message to the phone (raises if the push service refuses it)."""
-    from pywebpush import webpush  # only GitHub needs it: pip install -e ".[push]"
-
-    webpush(
-        subscription_info=json.loads(subscription),
-        data=json.dumps(payload, ensure_ascii=False),
-        vapid_private_key=private_key,
-        vapid_claims={"sub": VAPID_CONTACT},
-        ttl=TTL_SECONDS,
-    )
-
-
 # ---------------------------------------------------------------------- Android app (FCM)
 
 MODES = ("all", "v", "off")  # utenti/{uid}.notify: every new film, only my V ones, none
-TTL_FCM = timedelta(hours=12)
+TTL_FCM = timedelta(hours=12)  # a phone switched off for longer gets nothing: by then the news is old
 MAX_BODY = 300
 
 
@@ -235,7 +215,7 @@ def main() -> int:
     prep = commands.add_parser("prepare", help="sceglie i film nuovi in sala e scrive il messaggio")
     prep.add_argument("--out", required=True, type=Path)
     prep.add_argument("--prova", action="store_true", help="senza film nuovi, un messaggio di prova")
-    snd = commands.add_parser("send", help="invia il messaggio al telefono")
+    snd = commands.add_parser("send", help="invia il messaggio all'app Android")
     snd.add_argument("file", type=Path)
     args = parser.parse_args()
 
@@ -265,17 +245,6 @@ def main() -> int:
                 f"App Android: {counts['sent']} notifiche consegnate a {counts['accounts']} account "
                 f"({counts['removed']} telefoni non più raggiungibili tolti, {counts['errors']} errori)"
             )
-
-    subscription, private_key = os.getenv("PUSH_SUBSCRIPTION", ""), os.getenv("VAPID_PRIVATE_KEY", "")
-    if not (subscription and private_key):
-        print("Notifiche non attive: mancano i segreti PUSH_SUBSCRIPTION e VAPID_PRIVATE_KEY")
-    else:
-        try:
-            send(payload, subscription, private_key)
-        except Exception as err:  # the site is published anyway: report and go on
-            print(f"::warning::Notifica non inviata: {err}. Se hai reinstallato l'app, copia di nuovo il codice dalla pagina Voti.")
-            return 0
-        print("Notifica inviata")
     return 0
 
 
