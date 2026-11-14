@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'account.dart';
+import 'personal.dart';
 
 /// The account on Firebase: login with Google or e-mail and password, and the admission
 /// as the Firestore rules decide it (firebase/firestore.rules).
@@ -118,6 +119,9 @@ class FirebaseAccountBackend implements AccountBackend {
     }
   }
 
+  @override
+  PersonalRemote personalRemote(String uid) => FirebasePersonalRemote(_db.doc('utenti/$uid'));
+
   static Future<void> _guard(Future<void> Function() action) async {
     try {
       await action();
@@ -138,4 +142,34 @@ class FirebaseAccountBackend implements AccountBackend {
           'Questa email ha già un account con un altro modo di accesso: usa quello.',
         _ => 'Accesso non riuscito (${err.code}).',
       };
+}
+
+/// The votes in Firestore, utenti/{uid}: one document with the same maps as the copy of the
+/// votes. Each change touches only its entry, so two phones changing different films do not
+/// overwrite each other. Firestore keeps the changes made without connection and sends them
+/// when it comes back.
+class FirebasePersonalRemote implements PersonalRemote {
+  FirebasePersonalRemote(this._doc);
+
+  final DocumentReference<Map<String, dynamic>> _doc;
+
+  @override
+  Future<Map<String, dynamic>?> fetch() async {
+    final snap = await _doc.get(const GetOptions(source: Source.server));
+    return snap.exists ? snap.data() : null;
+  }
+
+  @override
+  Stream<RemoteSnapshot> watch() => _doc
+      .snapshots(includeMetadataChanges: true) // also when the server confirms what was sent
+      .map((s) => RemoteSnapshot(s.exists ? s.data() : null, pending: s.metadata.hasPendingWrites));
+
+  @override
+  Future<void> send(List<PersonalChange> changes) {
+    final data = <String, dynamic>{'updated': FieldValue.serverTimestamp()};
+    for (final c in changes) {
+      (data[c.section] ??= <String, dynamic>{})[c.key] = c.value ?? FieldValue.delete();
+    }
+    return _doc.set(data, SetOptions(merge: true));
+  }
 }

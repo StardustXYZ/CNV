@@ -29,7 +29,7 @@ class VotiPage extends StatelessWidget {
           const AccountSection(),
           const Text('I tuoi voti', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          const Text('Li vedi solo tu e per ora restano su questo telefono.',
+          Text(personal.linked ? 'Li vedi solo tu: sono su questo telefono e nel tuo account.' : 'Li vedi solo tu e restano su questo telefono.',
               style: TextStyle(fontSize: 13, color: CnvColors.textMuted)),
           const SizedBox(height: 12),
           Row(

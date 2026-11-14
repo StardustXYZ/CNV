@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,6 +10,9 @@ const votes = ['V', '?', 'S'];
 const voteLabels = {'V': 'V', '?': '?', 'S': '✓'};
 const voteTitles = {'V': 'Voglio vederlo', '?': 'Indeciso', 'S': 'Visto'};
 const _priority = {'S': 3, 'V': 2, '?': 1}; // two merged copies keep the most interested vote
+const _sections = ['votes', 'seen', 'exported', 'diary'];
+
+typedef Sections = Map<String, Map<String, Object?>>;
 
 /// When and where a film marked ✓ was seen.
 class SeenInfo {
@@ -26,9 +30,47 @@ class SeenInfo {
   }
 }
 
-/// The user's own data, kept only on this phone (the account arrives in phase 6): votes,
-/// films seen, and what already went to Letterboxd. The file has the same shape as the
-/// "copia dei voti" of the web version, so that copy can be restored here.
+/// One entry changed: [value] null means removed.
+@immutable
+class PersonalChange {
+  const PersonalChange(this.section, this.key, this.value);
+
+  final String section; // votes, seen, exported or diary
+  final String key; // film code
+  final Object? value;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PersonalChange && other.section == section && other.key == key && jsonEncode(other.value) == jsonEncode(value);
+
+  @override
+  int get hashCode => Object.hash(section, key, jsonEncode(value));
+
+  @override
+  String toString() => '$section.$key=$value';
+}
+
+/// What the account holds, as it arrives (with "pending" when changes made here have not
+/// reached the server yet).
+class RemoteSnapshot {
+  const RemoteSnapshot(this.data, {this.pending = false});
+
+  final Map<String, dynamic>? data; // null: the account has no votes yet
+  final bool pending;
+}
+
+/// The account copy of the votes (Firestore utenti/{uid}), behind an interface for the tests.
+abstract class PersonalRemote {
+  Future<Map<String, dynamic>?> fetch(); // from the server; null when there is nothing yet
+  Stream<RemoteSnapshot> watch();
+  Future<void> send(List<PersonalChange> changes);
+}
+
+enum SyncState { off, connecting, connected, error }
+
+/// The user's own data: votes, films seen, and what already went to Letterboxd. It is kept
+/// on the phone (same shape as the "copia dei voti" of the web version, so that copy can be
+/// restored here) and, with an admitted account, also in the account, entry by entry.
 class PersonalStore extends ChangeNotifier {
   PersonalStore({Future<Directory> Function()? folder}) : _folder = folder ?? getApplicationSupportDirectory;
 
@@ -38,6 +80,15 @@ class PersonalStore extends ChangeNotifier {
   Map<int, SeenInfo> seen = {};
   Map<int, String> exported = {}; // film -> day the watchlist CSV was imported on Letterboxd
   Map<int, String> diary = {}; // film -> day the diary CSV was imported on Letterboxd
+
+  // The account link
+  PersonalRemote? _remote;
+  PersonalRemote? _lastRemote;
+  StreamSubscription<RemoteSnapshot>? _watching;
+  Sections _sent = {}; // what the account has, as far as we know
+  SyncState sync = SyncState.off;
+  bool pending = false; // changes made here not yet on the server
+  String? syncError;
 
   String? vote(int film) => votesById[film];
 
@@ -55,6 +106,7 @@ class PersonalStore extends ChangeNotifier {
 
   Future<void> _save() async {
     notifyListeners();
+    _sendChanges();
     await persist();
   }
 
@@ -146,15 +198,13 @@ class PersonalStore extends ChangeNotifier {
 
   /// The copy of the votes: the same shape as the web version's ("cnv-voti-….json").
   String exportJson({String? savedAt}) => const JsonEncoder.withIndent(' ').convert({
-        'votes': {for (final e in votesById.entries) '${e.key}': e.value},
-        'exported': {for (final e in exported.entries) '${e.key}': e.value},
-        'seen': {for (final e in seen.entries) '${e.key}': e.value.toJson()},
-        'diary': {for (final e in diary.entries) '${e.key}': e.value},
+        ..._asSections(),
         'saved_at': ?savedAt,
       });
 
-  /// Restore a copy (from this app or from the web version), replacing the current data.
-  /// Returns how many votes it had; throws [FormatException] if it is not a copy of the votes.
+  /// Restore a copy (from this app or from the web version), replacing the current data
+  /// (in the account too, when linked). Returns how many votes it had; throws
+  /// [FormatException] if it is not a copy of the votes.
   Future<int> importJson(String text) async {
     final Object? j;
     try {
@@ -192,6 +242,134 @@ class PersonalStore extends ChangeNotifier {
     exported = ids(j['exported'], (v) => v is String ? v : null);
     seen = ids(j['seen'], SeenInfo.fromJson);
     diary = ids(j['diary'], (v) => v is String ? v : null);
+  }
+
+  Sections _asSections() => {
+        'votes': {for (final e in votesById.entries) '${e.key}': e.value},
+        'exported': {for (final e in exported.entries) '${e.key}': e.value},
+        'seen': {for (final e in seen.entries) '${e.key}': e.value.toJson()},
+        'diary': {for (final e in diary.entries) '${e.key}': e.value},
+      };
+
+  /// The data as the store reads it ([j] is a copy or the account document).
+  static Sections _sectionsOf(Object? j) {
+    final store = PersonalStore().._read(j);
+    final sections = store._asSections();
+    store.dispose();
+    return sections;
+  }
+
+  /// What changed from [before] to [after], entry by entry.
+  static List<PersonalChange> diff(Sections before, Sections after) => [
+        for (final s in _sections) ...[
+          for (final e in (after[s] ?? const {}).entries)
+            if (jsonEncode(before[s]?[e.key]) != jsonEncode(e.value)) PersonalChange(s, e.key, e.value),
+          for (final k in (before[s] ?? const {}).keys)
+            if (!(after[s] ?? const {}).containsKey(k)) PersonalChange(s, k, null),
+        ],
+      ];
+
+  // ------------------------------------------------------------------ account link
+
+  bool get linked => _remote != null;
+
+  /// Links the votes to the account: those already in the account count, and the ones only
+  /// on this phone are added to it (the first time, all of them). Then every change goes
+  /// both ways.
+  Future<void> connect(PersonalRemote remote) async {
+    await disconnect();
+    _lastRemote = remote;
+    sync = SyncState.connecting;
+    syncError = null;
+    notifyListeners();
+    try {
+      final account = _sectionsOf(await remote.fetch());
+      final local = _asSections();
+      final merged = {for (final s in _sections) s: <String, Object?>{...?local[s], ...?account[s]}};
+      // A ✓ taken from the phone does not survive if the account says otherwise
+      merged['seen']!.removeWhere((k, _) => merged['votes']![k] != 'S');
+      merged['diary']!.removeWhere((k, _) => merged['votes']![k] != 'S');
+      _read(merged);
+      _sent = account;
+      _remote = remote;
+      sync = SyncState.connected;
+      await _save(); // the votes only on this phone go to the account
+      // Only now: the first news from the account already includes what was just sent
+      _watching = remote.watch().listen(_onRemote, onError: (Object err) {
+        debugPrint('Voti dell’account non ricevuti: $err');
+        sync = SyncState.error;
+        syncError = 'L’account non risponde: forse non sei più nella lista.';
+        notifyListeners();
+      });
+    } catch (err) {
+      debugPrint('Voti non collegati all’account: $err');
+      _remote = null;
+      sync = SyncState.error;
+      syncError = 'Non riesco a raggiungere l’account. Controlla la connessione e riprova.';
+      notifyListeners();
+    }
+  }
+
+  /// Tries the link again after an error.
+  Future<void> reconnect() async {
+    final remote = _lastRemote;
+    if (remote != null) await connect(remote);
+  }
+
+  /// Signed out: the votes stay on this phone, no longer linked.
+  Future<void> disconnect() async {
+    await _watching?.cancel();
+    _watching = null;
+    _remote = null;
+    _lastRemote = null;
+    _sent = {};
+    pending = false;
+    if (sync != SyncState.off) {
+      sync = SyncState.off;
+      syncError = null;
+      notifyListeners();
+    }
+  }
+
+  void _onRemote(RemoteSnapshot snap) {
+    pending = snap.pending;
+    final data = snap.data;
+    if (data != null) {
+      final account = _sectionsOf(data);
+      if (diff(_asSections(), account).isNotEmpty) {
+        _read(data); // changed on another phone
+        unawaited(persist());
+      }
+      _sent = account;
+    }
+    if (sync == SyncState.error) {
+      sync = SyncState.connected;
+      syncError = null;
+    }
+    notifyListeners();
+  }
+
+  void _sendChanges() {
+    final remote = _remote;
+    if (remote == null) return;
+    final now = _asSections();
+    final changes = diff(_sent, now);
+    if (changes.isEmpty) return;
+    _sent = now;
+    pending = true;
+    // Without connection Firestore keeps them and sends them later: no waiting here
+    unawaited(remote.send(changes).catchError((Object err) {
+      debugPrint('Voti non mandati all’account: $err');
+      sync = SyncState.error;
+      syncError = 'Le ultime modifiche non sono arrivate all’account.';
+      notifyListeners();
+    }));
+  }
+
+  @override
+  void dispose() {
+    _watching?.cancel();
+    super.dispose();
   }
 }
 

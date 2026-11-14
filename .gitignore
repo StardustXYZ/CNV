@@ -42,3 +42,4 @@ apk/
 # Firebase: strumenti installati da npm e configurazione Android (resta sul PC)
 firebase/node_modules/
 mobile/android/app/google-services.json
+firebase/*-debug.log

@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cnv/data/account.dart';
+import 'package:cnv/data/personal.dart';
 import 'package:cnv/data/repository.dart';
 import 'package:cnv/main.dart';
 import 'package:cnv/pages/account_page.dart';
 
 import 'personal_test.dart' show MemoryPersonal;
 import 'programme_test.dart' show sample;
+import 'sync_test.dart' show FakeCloud, FakeRemote;
 import 'widget_test.dart' show storeWith;
 
 /// Firebase as the rules would answer: "capo" is the administrator, amico@example.com is admitted.
@@ -81,6 +83,11 @@ class FakeBackend implements AccountBackend {
 
   @override
   Future<void> saveAllowList(List<String> emails) async => allowed = emails;
+
+  final cloud = FakeCloud();
+
+  @override
+  PersonalRemote personalRemote(String uid) => FakeRemote(cloud, uid);
 }
 
 Future<void> settle() => Future<void>.delayed(Duration.zero);
@@ -209,6 +216,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Gestisci gli ammessi (1)'), findsOneWidget);
       await tester.tap(find.text('Esci dall’account'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('I voti restano su questo telefono'), findsOneWidget);
+      await tester.tap(find.text('Esci'));
       await tester.pumpAndSettle();
       expect(find.text('Accedi con Google'), findsOneWidget);
     });
