@@ -16,11 +16,11 @@ CnvData sample() => CnvData.fromJson({
         {'slug': 'garden', 'name': 'Cinema Garden', 'url': 'https://garden.example'},
       ],
       'films': [
-        {'id': 1, 'title': 'Clayface', 'status': 'in_sala', 'runtime': 100},
-        {'id': 2, 'title': 'Hope', 'status': 'in_sala'},
+        {'id': 1, 'title': 'Clayface', 'status': 'in_sala', 'runtime': 100, 'genre': 'Horror', 'since': '2026-11-05'},
+        {'id': 2, 'title': 'Hope', 'status': 'in_sala', 'genre': 'Fantascienza', 'since': '2026-11-13'},
         {'id': 3, 'title': 'Dune', 'status': 'in_uscita'},
         {'id': 4, 'title': 'Avengers', 'status': 'in_uscita'},
-        {'id': 5, 'title': 'Frankie', 'status': 'in_sala'}, // no shows left
+        {'id': 5, 'title': 'Frankie', 'status': 'in_sala', 'last_seen': '2026-11-10'}, // no shows left
       ],
       'shows': [
         {'f': 1, 'c': 'andromeda', 'd': '2026-11-14', 't': '18:00', 's': 'Sala 1', 'u': ''}, // started

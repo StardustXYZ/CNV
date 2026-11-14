@@ -42,7 +42,8 @@ void main() {
     final made = sample().generatedAt.toLocal();
     expect(find.text('Dati aggiornati il ${made.day}/${made.month} alle ${made.hour.toString().padLeft(2, '0')}:00'),
         findsOneWidget);
-    expect(find.text('2 film in sala con spettacoli in programma'), findsOneWidget); // "In sala" first
+    expect(find.text('Clayface'), findsOneWidget); // "In sala" first, with its films
+    expect(find.text('Hope'), findsOneWidget);
   });
 
   testWidgets('the menu and a swipe change the page', (tester) async {
@@ -85,6 +86,6 @@ void main() {
     repository.result = LoadResult(sample(), offline: false);
     await tester.tap(find.text('Riprova'));
     await tester.pumpAndSettle();
-    expect(find.text('2 film in sala con spettacoli in programma'), findsOneWidget);
+    expect(find.text('Clayface'), findsOneWidget);
   });
 }

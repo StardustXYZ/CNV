@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'data/programme.dart';
 import 'data/repository.dart';
+import 'pages/in_sala_page.dart';
 import 'pages/page_placeholder.dart';
 import 'theme.dart';
 
@@ -70,7 +71,7 @@ class _HomeShellState extends State<HomeShell> {
     final programme = Programme.build(data, _store.now);
     String films(int n) => n == 1 ? '1 film' : '$n film';
     return [
-      '${films(programme.inSala.length)} in sala con spettacoli in programma',
+      null, // the "In sala" page is ready
       '${films(programme.inUscita.length)} in uscita',
       null,
       null,
@@ -102,7 +103,8 @@ class _HomeShellState extends State<HomeShell> {
                   controller: _pager,
                   onPageChanged: (index) => setState(() => _current = index),
                   children: [
-                    for (var i = 0; i < cnvPages.length; i++)
+                    if (_store.data != null) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
+                    for (var i = 1; i < cnvPages.length; i++)
                       PagePlaceholder(page: cnvPages[i], summary: summaries[i], onRefresh: _store.refresh),
                   ],
                 ),
