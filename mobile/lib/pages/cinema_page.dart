@@ -7,6 +7,7 @@ import '../data/programme.dart';
 import '../data/repository.dart';
 import '../theme.dart';
 import '../widgets/film_widgets.dart';
+import '../widgets/vote_buttons.dart';
 import 'film_page.dart';
 
 /// Opens a cinema's page (from the menu or by touching its name).
@@ -150,6 +151,8 @@ class _CinemaPageState extends State<CinemaPage> {
                                     const SizedBox(height: 2),
                                     FilmMeta(film: film),
                                     SalaList(bySala: f.value),
+                                    const SizedBox(height: 8),
+                                    VoteButtons(film: film, data: data, today: programme.day),
                                   ],
                                 ),
                               ),

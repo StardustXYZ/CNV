@@ -7,6 +7,7 @@ import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/film_widgets.dart';
+import '../widgets/vote_buttons.dart';
 import 'cinema_page.dart';
 
 /// One film: poster, data, and every show still to come, day by day, split by cinema.
@@ -61,6 +62,8 @@ class FilmPage extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                VoteButtons(film: current, data: data, today: today),
                 const SizedBox(height: 18),
                 if (cinemas.isEmpty)
                   Padding(

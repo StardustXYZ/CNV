@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../data/format.dart';
 import '../data/models.dart';
+import '../data/personal.dart';
 import '../data/programme.dart';
 import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/film_widgets.dart';
+import '../widgets/vote_buttons.dart';
 import 'cinema_page.dart';
 import 'film_page.dart';
 
@@ -40,6 +42,7 @@ class _InSalaPageState extends State<InSalaPage> {
   final _search = TextEditingController();
   String? _genre;
   String? _cinema;
+  String? _vote; // null: all; '': not voted yet; 'V' / '?'
   Timer? _minute;
 
   @override
@@ -60,11 +63,15 @@ class _InSalaPageState extends State<InSalaPage> {
         _search.clear();
         _genre = null;
         _cinema = null;
+        _vote = null;
       });
+
+  bool _voteMatches(String? vote) => _vote == null || (_vote!.isEmpty ? vote == null : vote == _vote);
 
   @override
   Widget build(BuildContext context) {
     final data = widget.store.data!;
+    final personal = PersonalScope.of(context);
     final now = widget.store.now;
     final all = Programme.build(data, now);
     final programme = _cinema == null ? all : Programme.build(data, now, cinema: _cinema);
@@ -74,7 +81,7 @@ class _InSalaPageState extends State<InSalaPage> {
 
     final films = [
       for (final f in inSala)
-        if ((_genre == null || f.genre == _genre) && titleMatches(f, _search.text)) f,
+        if ((_genre == null || f.genre == _genre) && _voteMatches(personal.vote(f.id)) && titleMatches(f, _search.text)) f,
     ];
     final showing = [for (final f in films) if (programme.hasShows(f)) f]
       ..sort((a, b) {
@@ -83,7 +90,7 @@ class _InSalaPageState extends State<InSalaPage> {
       });
     // With a cinema chosen, films not on there are simply left out
     final gone = _cinema != null ? <Film>[] : ([for (final f in films) if (!all.hasShows(f)) f]..sort((a, b) => a.title.compareTo(b.title)));
-    final filtered = _search.text.trim().isNotEmpty || _genre != null || _cinema != null;
+    final filtered = _search.text.trim().isNotEmpty || _genre != null || _cinema != null || _vote != null;
 
     return RefreshIndicator(
       onRefresh: widget.store.refresh,
@@ -126,6 +133,20 @@ class _InSalaPageState extends State<InSalaPage> {
                   onChanged: (v) => setState(() => _cinema = v),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final (value, label) in const [(null, 'Tutti'), ('', 'Da votare'), ('V', 'V'), ('?', '?')])
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _vote == value,
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _vote = value),
+                ),
             ],
           ),
           if (filtered)
@@ -251,6 +272,8 @@ class FilmCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 12, color: CnvColors.textMuted),
                       ),
                     ),
+                  const SizedBox(height: 10),
+                  VoteButtons(film: film, data: store.data!, today: programme.day),
                 ],
               ),
             ),
