@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// CNV: every account has its own document, utenti/{its user code}, and reads and writes
+// only that one, if it is admitted: the administrator (config/ammessi.admin, a user code
+// written once in the Firebase console) and the e-mails in config/ammessi.email, which the
+// administrator manages from the app. Without config/ammessi nobody gets in.
+// E-mail accounts count only once the address is verified (Google ones always are).
+// GitHub uses the service account, which does not go through these rules.
+// Every collection is listed by name: what is not listed here is closed to everyone.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function allowList() {
+      return get(/databases/$(database)/documents/config/ammessi).data;
+    }
+
+    function hasAllowList() {
+      return exists(/databases/$(database)/documents/config/ammessi);
+    }
+
+    function isAdmin() {
+      return request.auth != null && hasAllowList() && allowList().admin == request.auth.uid;
+    }
+
+    function isAllowed() {
+      return request.auth != null && hasAllowList()
+        && (allowList().admin == request.auth.uid
+            || (request.auth.token.email_verified == true
+                && request.auth.token.email.lower() in allowList().get('email', [])));
+    }
+
+    function isUser(uid) {
+      return request.auth != null && request.auth.uid == uid && isAllowed();
+    }
+
+    // Who is admitted: only the administrator reads and changes it (not who the administrator is)
+    match /config/ammessi {
+      allow read: if isAdmin();
+      allow update: if isAdmin() && request.resource.data.admin == resource.data.admin
+        && validAllowList(request.resource.data);
+      allow create, delete: if false;
+    }
+
+    // The account's own data: votes, films seen, what already went to Letterboxd. Nobody
+    // else sees it, not even the administrator
+    match /utenti/{uid} {
+      allow read, delete: if isUser(uid);
+      allow create, update: if isUser(uid) && validPersonal(request.resource.data);
+    }
+
+    function validAllowList(d) {
+      return d.keys().hasOnly(['admin', 'email']) && d.email is list && d.email.size() <= 100;
+    }
+
+    // The same shape as the copy of the votes: maps by film code, plus when it was saved
+    function validPersonal(p) {
+      return p.keys().hasOnly(['votes', 'seen', 'exported', 'diary', 'updated'])
+        && (!('votes' in p) || (p.votes is map && p.votes.size() <= 5000))
+        && (!('seen' in p) || (p.seen is map && p.seen.size() <= 5000))
+        && (!('exported' in p) || (p.exported is map && p.exported.size() <= 5000))
+        && (!('diary' in p) || (p.diary is map && p.diary.size() <= 5000))
+        && (!('updated' in p) || p.updated is timestamp);
+    }
+  }
+}

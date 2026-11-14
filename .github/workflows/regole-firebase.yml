@@ -1,0 +1,63 @@
+# Pubblica le regole di accesso di Firestore (firebase/firestore.rules), dopo averle provate
+# sull'emulatore. Si avvia a mano: Actions -> "Regole Firebase" -> Run workflow.
+#
+# Serve il segreto FIREBASE_SERVICE_ACCOUNT, e l'account di servizio deve avere il ruolo
+# "Firebase Rules Admin" (console di Google Cloud -> IAM). Senza quel ruolo la pubblicazione
+# fallisce: in quel caso si incollano le regole a mano in Firebase -> Firestore -> Regole.
+name: Regole Firebase
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regole-firebase
+  cancel-in-progress: false
+
+jobs:
+  pubblica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: firebase
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Installa gli strumenti di Firebase
+        run: npm ci --no-audit --no-fund
+
+      - name: Prova le regole sull'emulatore
+        run: npm test
+
+      - name: Pubblica le regole
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Manca il segreto FIREBASE_SERVICE_ACCOUNT."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/account.json"
+          if npx firebase deploy --only firestore:rules --project cnv-chi-ni-vidimu --non-interactive; then
+            echo "Regole pubblicate: ogni account vede solo i suoi voti." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Pubblicazione non riuscita: probabilmente all'account di servizio manca il ruolo Firebase Rules Admin. Si possono incollare le regole a mano in Firebase -> Firestore -> Regole."
+            rm -f "$RUNNER_TEMP/account.json"
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/account.json"

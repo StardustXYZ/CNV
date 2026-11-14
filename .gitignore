@@ -38,3 +38,7 @@ site/
 # APK of the phone app (built from mobile/) to try on the phone: never committed
 apk/
 *.apk
+
+# Firebase: strumenti installati da npm e configurazione Android (resta sul PC)
+firebase/node_modules/
+mobile/android/app/google-services.json
