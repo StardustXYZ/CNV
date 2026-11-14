@@ -18,32 +18,35 @@ Future<void> openLink(BuildContext context, String url) async {
 }
 
 /// The film's poster (kept on the phone for use without connection), or 🎬 when there is none.
+/// Without [width] it fills the width it is given, always 2:3.
 class Poster extends StatelessWidget {
-  const Poster({super.key, required this.url, required this.width});
+  const Poster({super.key, required this.url, this.width});
 
   final String? url;
-  final double width;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
     final placeholder = Container(
       color: CnvColors.surface2,
       alignment: Alignment.center,
-      child: Text('🎬', style: TextStyle(fontSize: width / 3)),
+      child: Text('🎬', style: TextStyle(fontSize: width == null ? 14 : width! / 3)),
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: SizedBox(
         width: width,
-        height: width * 1.5,
-        child: url == null
+        child: AspectRatio(
+          aspectRatio: 2 / 3,
+          child: url == null
             ? placeholder
             : CachedNetworkImage(
                 imageUrl: url!,
                 fit: BoxFit.cover,
-                placeholder: (_, _) => placeholder,
-                errorWidget: (_, _, _) => placeholder,
-              ),
+                  placeholder: (_, _) => placeholder,
+                  errorWidget: (_, _, _) => placeholder,
+                ),
+        ),
       ),
     );
   }

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'data/programme.dart';
 import 'data/repository.dart';
 import 'pages/cinema_page.dart';
 import 'pages/in_sala_page.dart';
+import 'pages/in_uscita_page.dart';
 import 'pages/page_placeholder.dart';
 import 'theme.dart';
 
@@ -65,27 +65,12 @@ class _HomeShellState extends State<HomeShell> {
     _pager.animateToPage(index, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
   }
 
-  /// What each page can already say with the data (the full pages arrive in the next phases).
-  List<String?> _summaries() {
-    final data = _store.data;
-    if (data == null) return List.filled(cnvPages.length, null);
-    final programme = Programme.build(data, _store.now);
-    String films(int n) => n == 1 ? '1 film' : '$n film';
-    return [
-      null, // the "In sala" page is ready
-      '${films(programme.inUscita.length)} in uscita',
-      null,
-      null,
-      null,
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _store,
       builder: (context, _) {
-        final summaries = _summaries();
+        final ready = _store.data != null;
         return Scaffold(
           drawer: CinemaDrawer(store: _store), // ☰: the cinemas, as the menu of the web version
           appBar: AppBar(
@@ -105,9 +90,10 @@ class _HomeShellState extends State<HomeShell> {
                   controller: _pager,
                   onPageChanged: (index) => setState(() => _current = index),
                   children: [
-                    if (_store.data != null) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
-                    for (var i = 1; i < cnvPages.length; i++)
-                      PagePlaceholder(page: cnvPages[i], summary: summaries[i], onRefresh: _store.refresh),
+                    if (ready) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
+                    if (ready) InUscitaPage(store: _store) else PagePlaceholder(page: cnvPages[1]),
+                    // Votes and seen films arrive in phase 4
+                    for (var i = 2; i < cnvPages.length; i++) PagePlaceholder(page: cnvPages[i], onRefresh: _store.refresh),
                   ],
                 ),
           bottomNavigationBar: NavigationBar(
