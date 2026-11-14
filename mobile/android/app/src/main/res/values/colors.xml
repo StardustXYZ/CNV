@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background of the app (CnvColors.background): also the launch screen, so it opens dark -->
+    <color name="cnv_background">#121212</color>
+</resources>
