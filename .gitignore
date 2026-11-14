@@ -34,3 +34,7 @@ logs/
 
 # Phone site built locally (python -m app.export_static)
 site/
+
+# APK of the phone app (built from mobile/) to try on the phone: never committed
+apk/
+*.apk
