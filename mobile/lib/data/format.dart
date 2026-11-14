@@ -31,4 +31,7 @@ String formatRuntime(int minutes) {
   return m == 0 ? '${h}h' : '${h}h ${m.toString().padLeft(2, '0')}m';
 }
 
+/// e.g. "Nov" for 11.
+String shortMonth(int month) => capitalize(_months[month - 1].substring(0, 3));
+
 String capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);

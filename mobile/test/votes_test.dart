@@ -99,7 +99,7 @@ void main() {
     await tester.tap(find.descendant(of: find.byType(VoteButtons).last, matching: find.text('V')));
     await tester.pump();
     expect(personal.vote(1), 'V');
-    await tester.pageBack();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ChoiceChip, 'V'));
     await tester.pump();

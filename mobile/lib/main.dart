@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/personal.dart';
 import 'data/repository.dart';
@@ -53,6 +54,9 @@ class _CnvAppState extends State<CnvApp> {
         title: 'CNV',
         debugShowCheckedModeBanner: false,
         theme: cnvTheme(),
+        locale: const Locale('it'),
+        supportedLocales: const [Locale('it')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: HomeShell(store: _store),
       ),
     );

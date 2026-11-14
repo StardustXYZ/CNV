@@ -50,7 +50,7 @@ class VoteButtons extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 5),
             child: Text(
-              '✓ Visto il ${longDate(seen.date, today)}${seen.cinema != null ? ' · ${data.cinemasBySlug[seen.cinema]?.name ?? seen.cinema}' : ''}',
+              '✓ Visto${seen.date != null ? ' il ${longDate(seen.date!, today)}' : ''}${seen.cinema != null ? ' · ${data.cinemasBySlug[seen.cinema]?.name ?? seen.cinema}' : ''}',
               style: const TextStyle(fontSize: 12, color: CnvColors.accent),
             ),
           ),
