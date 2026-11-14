@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { after, before, beforeEach, test } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 
 let env;
 
@@ -47,6 +47,15 @@ test("ognuno legge e scrive i suoi voti", async () => {
         await assertSucceeds(updateDoc(doc(db, `utenti/${uid}`), { "votes.99": "?" }));
         await assertSucceeds(deleteDoc(doc(db, `utenti/${uid}`)));
     }
+});
+
+test("l'app scrive voto per voto, con l'ora del server", async () => {
+    const db = as("amico");
+    const ref = doc(db, "utenti/amico");
+    await assertSucceeds(setDoc(ref, { votes: { 12: "V" }, updated: serverTimestamp() }, { merge: true }));
+    await assertSucceeds(setDoc(ref, { votes: { 12: deleteField(), 40: "S" }, seen: { 40: { date: "2026-11-14", cinema: null } }, updated: serverTimestamp() }, { merge: true }));
+    const saved = (await getDoc(ref)).data();
+    if (JSON.stringify(saved.votes) !== '{"40":"S"}') throw new Error(`voti sbagliati: ${JSON.stringify(saved.votes)}`);
 });
 
 test("nessuno vede o cambia i voti di un altro, neanche l'amministratore", async () => {

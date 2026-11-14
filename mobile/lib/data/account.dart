@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'personal.dart';
+
 /// The signed-in account, as the app needs it.
 @immutable
 class AccountUser {
@@ -45,6 +47,9 @@ abstract class AccountBackend {
   /// The admitted e-mails; null when this account is not the administrator.
   Future<List<String>?> allowList();
   Future<void> saveAllowList(List<String> emails);
+
+  /// The account copy of the votes of [uid].
+  PersonalRemote personalRemote(String uid);
 }
 
 /// The account part of the app: who is signed in and whether it is admitted.
@@ -65,6 +70,9 @@ class AccountStore extends ChangeNotifier {
   bool busy = false;
 
   bool get isAdmin => allowed != null;
+
+  /// Where the votes of [uid] are kept in the account (null without Firebase).
+  PersonalRemote? remoteFor(String uid) => _backend?.personalRemote(uid);
 
   void _onUser(AccountUser? u) {
     final changed = u?.uid != user?.uid || u?.verified != user?.verified;

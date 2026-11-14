@@ -6,6 +6,7 @@ import 'data/account.dart';
 import 'data/firebase_account.dart';
 import 'data/personal.dart';
 import 'data/repository.dart';
+import 'data/sync.dart';
 import 'home.dart';
 import 'pages/account_page.dart';
 import 'theme.dart';
@@ -38,12 +39,21 @@ class _CnvAppState extends State<CnvApp> {
   late final DataStore _store = widget.store ?? DataStore(DataRepository());
   late final PersonalStore _personal = widget.personal ?? PersonalStore();
   late final AccountStore _account = widget.account ?? AccountStore(null);
+  VoteSync? _sync;
 
   @override
   void initState() {
     super.initState();
     _store.addListener(_applyMerges);
-    if (widget.personal == null) _personal.load().then((_) => _applyMerges());
+    if (widget.personal == null) {
+      // The votes saved on the phone first, then the account: they are merged, not replaced
+      _personal.load().then((_) {
+        _applyMerges();
+        if (mounted) _sync = VoteSync(_account, _personal);
+      });
+    } else {
+      _sync = VoteSync(_account, _personal);
+    }
     if (widget.store == null) _store.start();
   }
 
@@ -56,6 +66,7 @@ class _CnvAppState extends State<CnvApp> {
   @override
   void dispose() {
     _store.removeListener(_applyMerges);
+    _sync?.dispose();
     if (widget.store == null) _store.dispose();
     if (widget.personal == null) _personal.dispose();
     if (widget.account == null) _account.dispose();

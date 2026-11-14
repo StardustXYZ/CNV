@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/account.dart';
+import '../data/personal.dart';
 import '../theme.dart';
 import '../widgets/letterboxd_widgets.dart' show say;
 
@@ -25,6 +26,22 @@ Future<bool> _attempt(BuildContext context, Future<void> Function() action) asyn
   return false;
 }
 
+Future<void> _signOut(BuildContext context, AccountStore account) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Uscire dall’account?'),
+      content: const Text('I voti restano su questo telefono e nell’account; le modifiche fatte da ora '
+          'in poi restano solo sul telefono, finché non rientri.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Annulla')),
+        FilledButton(onPressed: () => Navigator.of(dialog).pop(true), child: const Text('Esci')),
+      ],
+    ),
+  );
+  if (ok == true && context.mounted) await _attempt(context, account.signOut);
+}
+
 /// The "Account" box of the Voti page: sign in, the confirmation of the e-mail, whether the
 /// account is admitted, and for the administrator the list of admitted e-mails.
 class AccountSection extends StatelessWidget {
@@ -44,8 +61,9 @@ class AccountSection extends StatelessWidget {
     if (!account.available) {
       text("L'accesso non è disponibile su questo telefono. CNV funziona lo stesso.");
     } else if (user == null) {
-      text("Con l'account ritrovi i tuoi voti su un altro telefono e, più avanti, ricevi le notifiche. "
-          'CNV funziona anche senza. L’account è solo su invito: se non sei nella lista, chiedi di aggiungerti.');
+      text("Con l'account i tuoi voti si salvano anche online e li ritrovi su un altro telefono; più avanti "
+          'arriveranno anche le notifiche. CNV funziona anche senza. L’account è solo su invito: se non sei nella '
+          'lista, chiedi di aggiungerti.');
       children.addAll([
         FilledButton.icon(
           onPressed: account.busy ? null : () => _attempt(context, account.signInWithGoogle),
@@ -103,7 +121,7 @@ class AccountSection extends StatelessWidget {
               ]),
             ));
           case Admission.admitted:
-            text('✓ Sei nella lista. Nella prossima versione i tuoi voti passeranno all’account.', color: CnvColors.green);
+            children.add(const SyncStatus());
           case Admission.notAdmitted:
             text('Non sei ancora nella lista degli ammessi: chiedi a chi ti ha dato CNV di aggiungere ${user.email}, '
                 'poi tocca “Riprova”.', color: CnvColors.yellow);
@@ -141,7 +159,7 @@ class AccountSection extends StatelessWidget {
           ],
         ),
         TextButton.icon(
-          onPressed: account.busy ? null : () => _attempt(context, account.signOut),
+          onPressed: account.busy ? null : () => _signOut(context, account),
           icon: const Icon(Icons.logout, size: 18),
           label: const Text('Esci dall’account'),
         ),
@@ -384,6 +402,37 @@ class _AllowListPageState extends State<AllowListPage> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Where the votes stand with the account: being linked, saved, waiting, or a problem.
+class SyncStatus extends StatelessWidget {
+  const SyncStatus({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final personal = PersonalScope.of(context);
+    final (text, color) = switch (personal.sync) {
+      SyncState.off || SyncState.connecting => ('Collego i tuoi voti all’account…', CnvColors.textMuted),
+      SyncState.connected when personal.pending =>
+        ('Voti salvati sul telefono: arrivano all’account appena c’è connessione.', CnvColors.yellow),
+      SyncState.connected => ('✓ Sei nella lista e i tuoi voti sono salvati anche nell’account.', CnvColors.green),
+      SyncState.error => (personal.syncError ?? 'I voti non arrivano all’account.', CnvColors.yellow),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(text, style: TextStyle(fontSize: 13, color: color, height: 1.35)),
+          if (personal.sync == SyncState.error)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: OutlinedButton(onPressed: personal.reconnect, child: const Text('Riprova a collegare i voti')),
+            ),
+        ],
+      ),
     );
   }
 }
