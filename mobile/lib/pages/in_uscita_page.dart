@@ -7,6 +7,7 @@ import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/film_widgets.dart';
+import '../widgets/vote_buttons.dart';
 import 'cinema_page.dart';
 import 'film_page.dart';
 import 'in_sala_page.dart' show titleMatches;
@@ -184,6 +185,8 @@ class _ComingCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                  const SizedBox(height: 10),
+                  VoteButtons(film: film, data: store.data!, today: today),
                 ],
               ),
             ),

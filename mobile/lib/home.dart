@@ -5,6 +5,7 @@ import 'pages/cinema_page.dart';
 import 'pages/in_sala_page.dart';
 import 'pages/in_uscita_page.dart';
 import 'pages/page_placeholder.dart';
+import 'pages/voti_page.dart';
 import 'theme.dart';
 
 /// One page of the app, as listed in the bottom menu.
@@ -28,15 +29,15 @@ const cnvPages = [
   CnvPage('Visti', Icons.check_circle_outline, Icons.check_circle,
       'I film che hai visto al cinema, con le statistiche.'),
   CnvPage('Voti', Icons.how_to_vote_outlined, Icons.how_to_vote,
-      'La copia dei voti, e più avanti accesso e notifiche.'),
+      'I tuoi voti, la loro copia, e più avanti accesso e notifiche.'),
 ];
 
 /// The app's frame: title bar with the data status, the pages side by side (swipe to
 /// move) and the bottom menu.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, this.store});
+  const HomeShell({super.key, required this.store});
 
-  final DataStore? store; // given by the tests; the app makes its own
+  final DataStore store;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -44,19 +45,12 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final _pager = PageController();
-  late final DataStore _store = widget.store ?? DataStore(DataRepository());
+  late final DataStore _store = widget.store;
   int _current = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.store == null) _store.start();
-  }
 
   @override
   void dispose() {
     _pager.dispose();
-    if (widget.store == null) _store.dispose();
     super.dispose();
   }
 
@@ -92,8 +86,9 @@ class _HomeShellState extends State<HomeShell> {
                   children: [
                     if (ready) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
                     if (ready) InUscitaPage(store: _store) else PagePlaceholder(page: cnvPages[1]),
-                    // Votes and seen films arrive in phase 4
-                    for (var i = 2; i < cnvPages.length; i++) PagePlaceholder(page: cnvPages[i], onRefresh: _store.refresh),
+                    // Watchlist and seen films arrive in the next piece (4b)
+                    for (var i = 2; i < 4; i++) PagePlaceholder(page: cnvPages[i], onRefresh: _store.refresh),
+                    VotiPage(store: _store),
                   ],
                 ),
           bottomNavigationBar: NavigationBar(

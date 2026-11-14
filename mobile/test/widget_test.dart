@@ -23,6 +23,13 @@ class FakeRepository extends DataRepository {
   Future<CnvData?> readSaved() async => null;
 }
 
+/// A phone screen (the cards are tall: on the default 800x600 the second one is not built).
+void phoneView(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 2.6;
+  addTearDown(tester.view.reset);
+}
+
 Future<DataStore> storeWith(LoadResult? result, {DateTime? now}) async {
   final store = DataStore(FakeRepository(result), clock: () => now ?? DateTime(2026, 11, 14, 20));
   await store.refresh();
@@ -31,6 +38,7 @@ Future<DataStore> storeWith(LoadResult? result, {DateTime? now}) async {
 
 void main() {
   testWidgets('title, the five pages in the menu and the data status', (tester) async {
+    phoneView(tester);
     await tester.pumpWidget(CnvApp(store: await storeWith(LoadResult(sample(), offline: false))));
 
     expect(find.text('CNV'), findsOneWidget);
@@ -58,7 +66,7 @@ void main() {
     // Finger to the left: the next page, and the menu follows
     await tester.fling(find.byType(PageView), const Offset(-400, 0), 1500);
     await tester.pumpAndSettle();
-    expect(find.text(cnvPages[4].description), findsOneWidget);
+    expect(find.text('Salva una copia dei voti'), findsOneWidget); // the Voti page
     expect(tester.widget<NavigationBar>(menu).selectedIndex, 4);
 
     await tester.fling(find.byType(PageView), const Offset(400, 0), 1500);
@@ -77,6 +85,7 @@ void main() {
   });
 
   testWidgets('no data at all: the message, and "Riprova" when the network is back', (tester) async {
+    phoneView(tester);
     final repository = FakeRepository(null);
     final store = DataStore(repository, clock: () => DateTime(2026, 11, 14, 20));
     await store.refresh();
