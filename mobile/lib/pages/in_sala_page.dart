@@ -9,6 +9,7 @@ import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/film_widgets.dart';
+import 'cinema_page.dart';
 import 'film_page.dart';
 
 /// Words of a title without accents, case and punctuation: "Città" is found by "citta".
@@ -234,8 +235,11 @@ class FilmCard extends StatelessWidget {
                     ),
                     for (final c in cinemas) ...[
                       const SizedBox(height: 6),
-                      Text(store.data!.cinemasBySlug[c.key]?.name ?? c.key,
-                          style: const TextStyle(fontSize: 13, color: CnvColors.accent, fontWeight: FontWeight.w600)),
+                      InkWell(
+                        onTap: () => openCinema(context, c.key, store),
+                        child: Text(store.data!.cinemasBySlug[c.key]?.name ?? c.key,
+                            style: const TextStyle(fontSize: 13, color: CnvColors.accent, fontWeight: FontWeight.w600)),
+                      ),
                       SalaList(bySala: c.value),
                     ],
                   ],

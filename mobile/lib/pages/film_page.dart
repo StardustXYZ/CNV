@@ -7,6 +7,7 @@ import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/film_widgets.dart';
+import 'cinema_page.dart';
 
 /// One film: poster, data, and every show still to come, day by day, split by cinema.
 class FilmPage extends StatelessWidget {
@@ -80,8 +81,11 @@ class FilmPage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(data.cinemasBySlug[c.cinema]?.name ?? c.cinema,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                            InkWell(
+                              onTap: () => openCinema(context, c.cinema, store),
+                              child: Text(data.cinemasBySlug[c.cinema]?.name ?? c.cinema,
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                            ),
                             for (final d in c.days)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),

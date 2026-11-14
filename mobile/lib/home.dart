@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'data/programme.dart';
 import 'data/repository.dart';
+import 'pages/cinema_page.dart';
 import 'pages/in_sala_page.dart';
 import 'pages/page_placeholder.dart';
 import 'theme.dart';
@@ -86,6 +87,7 @@ class _HomeShellState extends State<HomeShell> {
       builder: (context, _) {
         final summaries = _summaries();
         return Scaffold(
+          drawer: CinemaDrawer(store: _store), // ☰: the cinemas, as the menu of the web version
           appBar: AppBar(
             title: const CnvTitle(),
             actions: [
@@ -136,8 +138,13 @@ class CnvTitle extends StatelessWidget {
         Text('🎬 ', style: TextStyle(fontSize: 20)),
         Text('CNV', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: CnvColors.accent)),
         SizedBox(width: 8),
-        Text('Chi Ni Vidimu',
-            style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: CnvColors.textMuted)),
+        // On a narrow phone, with the menu and refresh buttons, it shortens instead of overflowing
+        Flexible(
+          child: Text('Chi Ni Vidimu',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: CnvColors.textMuted)),
+        ),
       ],
     );
   }
