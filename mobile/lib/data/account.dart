@@ -56,6 +56,9 @@ abstract class AccountBackend {
   Future<void> setNotifyMode(String uid, String mode);
   Future<void> savePhone(String uid, String phone, String token);
   Future<void> removePhone(String uid, String phone);
+
+  /// Deletes the account's data in Firestore (votes, phones) and the account itself.
+  Future<void> deleteAccount();
 }
 
 /// The account part of the app: who is signed in and whether it is admitted.
@@ -145,6 +148,9 @@ class AccountStore extends ChangeNotifier {
         }
         await b.signOut();
       });
+
+  /// "Elimina l'account": its data in Firebase and the account; the votes on the phone stay.
+  Future<void> deleteAccount() => _run((b) => b.deleteAccount());
 
   /// "Ho confermato": reads the account again; if the e-mail is now confirmed, checks the list.
   Future<bool> reloadVerified() async {

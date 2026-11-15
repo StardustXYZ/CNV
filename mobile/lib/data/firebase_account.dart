@@ -140,6 +140,34 @@ class FirebaseAccountBackend implements AccountBackend {
   @override
   Future<void> removePhone(String uid, String phone) => _db.doc('utenti/$uid/telefoni/$phone').delete();
 
+  @override
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      // The data first, while the rules still let this account in (not in the list: nothing to delete)
+      final phones = await _db.collection('utenti/${user.uid}/telefoni').get();
+      for (final phone in phones.docs) {
+        await phone.reference.delete();
+      }
+      await _db.doc('utenti/${user.uid}').delete();
+    } on FirebaseException catch (err) {
+      if (err.code != 'permission-denied') {
+        throw AccountError('Dati non cancellati (${err.code}). Controlla la connessione e riprova.');
+      }
+    }
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (err) {
+      if (err.code == 'requires-recent-login') {
+        throw const AccountError('I dati sono cancellati; per eliminare anche l’account, per sicurezza esci, '
+            'rientra e tocca subito di nuovo “Elimina l’account”.');
+      }
+      throw AccountError(_authMessage(err));
+    }
+    if (_googleReady) await GoogleSignIn.instance.signOut();
+  }
+
   static Future<void> _guard(Future<void> Function() action) async {
     try {
       await action();

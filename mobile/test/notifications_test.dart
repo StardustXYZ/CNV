@@ -94,6 +94,20 @@ void main() {
     expect(backend.phones['capo'], {'telefono-prova': 'tok-1'});
   });
 
+  test('a new phone without the permission: chosen again, then registered', () async {
+    final backend = FakeBackend()..notify['capo'] = 'v';
+    final push = FakePush(); // not granted yet
+    final (_, store) = await signedIn(backend, push);
+    expect(store.mode, 'off');
+    expect(store.problem, contains('scegli di nuovo'));
+    expect(backend.phones['capo'], isNull);
+    await store.setMode('v');
+    expect(push.asked, 1);
+    expect(backend.phones['capo'], {'telefono-prova': 'tok-1'});
+    expect(store.mode, 'v');
+    expect(store.problem, isNull);
+  });
+
   test('a new token is saved; signing out removes the phone but keeps the choice', () async {
     final backend = FakeBackend(), push = FakePush();
     final (account, store) = await signedIn(backend, push);

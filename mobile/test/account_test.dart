@@ -103,6 +103,18 @@ class FakeBackend implements AccountBackend {
 
   @override
   Future<void> removePhone(String uid, String phone) async => phones[uid]?.remove(phone);
+
+  final deleted = <String>[];
+
+  @override
+  Future<void> deleteAccount() async {
+    final uid = _current!.uid;
+    phones.remove(uid);
+    notify.remove(uid);
+    cloud.docs.remove(uid);
+    deleted.add(uid);
+    _set(null);
+  }
 }
 
 Future<void> settle() => Future<void>.delayed(Duration.zero);
@@ -275,6 +287,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('Sei nella lista'), findsOneWidget);
       expect(find.textContaining('Gestisci gli ammessi'), findsNothing);
+    });
+
+    testWidgets('deleting the account: confirmed, data gone, the votes on the phone stay', (tester) async {
+      final backend = await openVoti(tester);
+      await tester.tap(find.text('Accedi con Google'));
+      await tester.pumpAndSettle();
+      backend.cloud.docs['capo'] = {'votes': {'1': 'V'}};
+      await tester.ensureVisible(find.text('Elimina l’account'));
+      await tester.tap(find.text('Elimina l’account'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Non si può annullare'), findsOneWidget);
+      await tester.tap(find.text('Annulla'));
+      await tester.pumpAndSettle();
+      expect(backend.deleted, isEmpty);
+
+      await tester.tap(find.text('Elimina l’account'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Elimina'));
+      await tester.pumpAndSettle();
+      expect(backend.deleted, ['capo']);
+      expect(backend.cloud.docs['capo'], isNull);
+      expect(find.text('Account eliminato.'), findsOneWidget);
+      expect(find.text('Accedi con Google'), findsOneWidget);
     });
 
     testWidgets('wrong password and the forgotten one', (tester) async {

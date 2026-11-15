@@ -1,0 +1,6 @@
+# Copy this file as key.properties (same folder) and fill in the two passwords chosen when
+# the key was created (NOME: your Windows user). key.properties stays on the PC: it is in .gitignore.
+storeFile=C:/Users/NOME/OneDrive/Desktop/cnv-chiavi/cnv-firma.jks
+keyAlias=cnv
+storePassword=
+keyPassword=

@@ -9,6 +9,7 @@ import '../data/schedule.dart';
 import '../theme.dart';
 import '../widgets/letterboxd_widgets.dart';
 import 'account_page.dart';
+import 'update_widgets.dart';
 
 /// "Voti": how many films have each vote, and the copy of the votes (save and restore,
 /// also the one made by the web version). Login and notifications come later.
@@ -59,6 +60,7 @@ class VotiPage extends StatelessWidget {
             icon: const Icon(Icons.restore),
             label: const Text('Ripristina da una copia'),
           ),
+          const AppInfoBox(),
         ],
       ),
     );
