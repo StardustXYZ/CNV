@@ -5,6 +5,7 @@ import 'pages/cinema_page.dart';
 import 'pages/in_sala_page.dart';
 import 'pages/in_uscita_page.dart';
 import 'pages/page_placeholder.dart';
+import 'pages/update_widgets.dart';
 import 'pages/visti_page.dart';
 import 'pages/voti_page.dart';
 import 'pages/watchlist_page.dart';
@@ -22,16 +23,36 @@ class CnvPage {
 
 /// The pages, in the same order as the menu of the web version.
 const cnvPages = [
-  CnvPage('In sala', Icons.local_movies_outlined, Icons.local_movies,
-      'I film in programmazione nei cinema di Cosenza e Rende, con gli orari di oggi.'),
-  CnvPage('In uscita', Icons.event_outlined, Icons.event,
-      'I film annunciati dai cinema, in elenco e nel calendario del mese.'),
-  CnvPage('Watchlist', Icons.bookmark_outline, Icons.bookmark,
-      'I film segnati V o ? usciti dalle sale, da portare su Letterboxd.'),
-  CnvPage('Visti', Icons.check_circle_outline, Icons.check_circle,
-      'I film che hai visto al cinema, con le statistiche.'),
-  CnvPage('Voti', Icons.how_to_vote_outlined, Icons.how_to_vote,
-      'I tuoi voti, la loro copia, e più avanti accesso e notifiche.'),
+  CnvPage(
+    'In sala',
+    Icons.local_movies_outlined,
+    Icons.local_movies,
+    'I film in programmazione nei cinema di Cosenza e Rende, con gli orari di oggi.',
+  ),
+  CnvPage(
+    'In uscita',
+    Icons.event_outlined,
+    Icons.event,
+    'I film annunciati dai cinema, in elenco e nel calendario del mese.',
+  ),
+  CnvPage(
+    'Watchlist',
+    Icons.bookmark_outline,
+    Icons.bookmark,
+    'I film segnati V o ? usciti dalle sale, da portare su Letterboxd.',
+  ),
+  CnvPage(
+    'Visti',
+    Icons.check_circle_outline,
+    Icons.check_circle,
+    'I film che hai visto al cinema, con le statistiche.',
+  ),
+  CnvPage(
+    'Voti',
+    Icons.how_to_vote_outlined,
+    Icons.how_to_vote,
+    'I tuoi voti, la loro copia, e più avanti accesso e notifiche.',
+  ),
 ];
 
 /// The app's frame: title bar with the data status, the pages side by side (swipe to
@@ -80,19 +101,26 @@ class _HomeShellState extends State<HomeShell> {
             ],
             bottom: DataStatusBar(store: _store),
           ),
-          body: _store.state == LoadState.error
-              ? NoDataMessage(onRetry: _store.refresh, retrying: _store.refreshing)
-              : PageView(
-                  controller: _pager,
-                  onPageChanged: (index) => setState(() => _current = index),
-                  children: [
-                    if (ready) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
-                    if (ready) InUscitaPage(store: _store) else PagePlaceholder(page: cnvPages[1]),
-                    if (ready) WatchlistPage(store: _store) else PagePlaceholder(page: cnvPages[2]),
-                    if (ready) VistiPage(store: _store) else PagePlaceholder(page: cnvPages[3]),
-                    VotiPage(store: _store),
-                  ],
-                ),
+          body: Column(
+            children: [
+              const UpdateBanner(),
+              Expanded(
+                child: _store.state == LoadState.error
+                    ? NoDataMessage(onRetry: _store.refresh, retrying: _store.refreshing)
+                    : PageView(
+                        controller: _pager,
+                        onPageChanged: (index) => setState(() => _current = index),
+                        children: [
+                          if (ready) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
+                          if (ready) InUscitaPage(store: _store) else PagePlaceholder(page: cnvPages[1]),
+                          if (ready) WatchlistPage(store: _store) else PagePlaceholder(page: cnvPages[2]),
+                          if (ready) VistiPage(store: _store) else PagePlaceholder(page: cnvPages[3]),
+                          VotiPage(store: _store),
+                        ],
+                      ),
+              ),
+            ],
+          ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _current,
             onDestinationSelected: _goTo,
@@ -119,14 +147,19 @@ class CnvTitle extends StatelessWidget {
       textBaseline: TextBaseline.alphabetic,
       children: [
         Text('🎬 ', style: TextStyle(fontSize: 20)),
-        Text('CNV', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: CnvColors.accent)),
+        Text(
+          'CNV',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: CnvColors.accent),
+        ),
         SizedBox(width: 8),
         // On a narrow phone, with the menu and refresh buttons, it shortens instead of overflowing
         Flexible(
-          child: Text('Chi Ni Vidimu',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: CnvColors.textMuted)),
+          child: Text(
+            'Chi Ni Vidimu',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: CnvColors.textMuted),
+          ),
         ),
       ],
     );
@@ -168,7 +201,13 @@ class DataStatusBar extends StatelessWidget implements PreferredSizeWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            Expanded(child: Text(text, style: TextStyle(fontSize: 12, color: color), overflow: TextOverflow.ellipsis)),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(fontSize: 12, color: color),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             if (store.refreshing && data != null)
               const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
           ],
@@ -195,8 +234,11 @@ class NoDataMessage extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off, size: 48, color: CnvColors.textMuted),
             const SizedBox(height: 12),
-            const Text('Non riesco a scaricare i dati.\nControlla la connessione e riprova.',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.4)),
+            const Text(
+              'Non riesco a scaricare i dati.\nControlla la connessione e riprova.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, height: 1.4),
+            ),
             const SizedBox(height: 16),
             FilledButton(onPressed: retrying ? null : onRetry, child: Text(retrying ? 'Riprovo…' : 'Riprova')),
           ],

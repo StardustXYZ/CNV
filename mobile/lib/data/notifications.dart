@@ -64,8 +64,15 @@ class NotificationStore extends ChangeNotifier {
       final saved = await _backend.notifyMode(uid);
       if (_uid != uid) return;
       mode = notifyModes.contains(saved) ? saved! : 'off';
-      // Back on this phone (or a new token): registered again, without asking anything
-      if (mode != 'off' && await _push.hasPermission()) await _register(uid);
+      if (mode != 'off') {
+        if (await _push.hasPermission()) {
+          await _register(uid); // back on this phone (or a new token): registered again, without asking
+        } else {
+          // A new phone, or the app installed again: Android has to give the permission first
+          mode = 'off';
+          problem = 'Su questo telefono le notifiche non sono ancora attive: scegli di nuovo quali vuoi.';
+        }
+      }
     } catch (err) {
       debugPrint('Notifiche non lette: $err');
     } finally {

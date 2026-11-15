@@ -43,3 +43,7 @@ apk/
 firebase/node_modules/
 mobile/android/app/google-services.json
 firebase/*-debug.log
+# Firma delle versioni da pubblicare: chiave e password restano sul PC
+mobile/android/key.properties
+*.jks
+*.keystore

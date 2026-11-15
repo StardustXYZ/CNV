@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'data/account.dart';
 import 'data/firebase_account.dart';
@@ -11,8 +12,10 @@ import 'data/notifications.dart';
 import 'data/personal.dart';
 import 'data/repository.dart';
 import 'data/sync.dart';
+import 'data/updates.dart';
 import 'home.dart';
 import 'pages/account_page.dart';
+import 'pages/update_widgets.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -27,8 +30,15 @@ Future<void> main() async {
     debugPrint('Firebase non avviato: $err'); // CNV works anyway, without the account
   }
   final account = AccountStore(backend);
+  UpdateStore? updates;
+  try {
+    updates = UpdateStore(currentVersion: (await PackageInfo.fromPlatform()).version);
+  } catch (err) {
+    debugPrint('Versione non letta: $err');
+  }
   runApp(
     CnvApp(
+      updates: updates,
       account: account,
       notifications: backend != null && push != null ? NotificationStore(account, backend, push) : null,
       foreground: push?.foreground(),
@@ -38,13 +48,22 @@ Future<void> main() async {
 
 /// CNV (Chi Ni Vidimu): the films in the cinemas of Cosenza and Rende, on the phone.
 class CnvApp extends StatefulWidget {
-  const CnvApp({super.key, this.store, this.personal, this.account, this.notifications, this.foreground});
+  const CnvApp({
+    super.key,
+    this.store,
+    this.personal,
+    this.account,
+    this.notifications,
+    this.foreground,
+    this.updates,
+  });
 
   final DataStore? store; // given by the tests; otherwise the app downloads the real data
   final PersonalStore? personal; // given by the tests; otherwise the votes saved on the phone
   final AccountStore? account; // without it, no account (as in the tests)
   final NotificationStore? notifications; // without it, no notifications
   final Stream<String>? foreground; // notifications arrived with the app open
+  final UpdateStore? updates; // newer versions on GitHub (none in the tests)
 
   @override
   State<CnvApp> createState() => _CnvAppState();
@@ -57,6 +76,7 @@ class _CnvAppState extends State<CnvApp> {
   VoteSync? _sync;
   final _messenger = GlobalKey<ScaffoldMessengerState>();
   StreamSubscription<String>? _foreground;
+  Timer? _updateCheck;
 
   @override
   void initState() {
@@ -72,6 +92,8 @@ class _CnvAppState extends State<CnvApp> {
       _sync = VoteSync(_account, _personal);
     }
     if (widget.store == null) _store.start();
+    // A few seconds after opening, without slowing the start
+    if (widget.updates != null) _updateCheck = Timer(const Duration(seconds: 3), () => widget.updates?.check());
     // With the app open Android does not show them: a message at the bottom instead
     _foreground = widget.foreground?.listen(
       (text) =>
@@ -90,6 +112,7 @@ class _CnvAppState extends State<CnvApp> {
     _store.removeListener(_applyMerges);
     _sync?.dispose();
     _foreground?.cancel();
+    _updateCheck?.cancel();
     if (widget.store == null) _store.dispose();
     if (widget.personal == null) _personal.dispose();
     if (widget.account == null) _account.dispose();
@@ -99,21 +122,24 @@ class _CnvAppState extends State<CnvApp> {
   @override
   Widget build(BuildContext context) {
     // Above the navigator: the film and cinema pages opened on top see the votes too
-    return NotificationScope(
-      store: widget.notifications,
-      child: AccountScope(
-        store: _account,
-        child: PersonalScope(
-          store: _personal,
-          child: MaterialApp(
-            title: 'CNV',
-            debugShowCheckedModeBanner: false,
-            scaffoldMessengerKey: _messenger,
-            theme: cnvTheme(),
-            locale: const Locale('it'),
-            supportedLocales: const [Locale('it')],
-            localizationsDelegates: GlobalMaterialLocalizations.delegates,
-            home: HomeShell(store: _store),
+    return UpdateScope(
+      store: widget.updates,
+      child: NotificationScope(
+        store: widget.notifications,
+        child: AccountScope(
+          store: _account,
+          child: PersonalScope(
+            store: _personal,
+            child: MaterialApp(
+              title: 'CNV',
+              debugShowCheckedModeBanner: false,
+              scaffoldMessengerKey: _messenger,
+              theme: cnvTheme(),
+              locale: const Locale('it'),
+              supportedLocales: const [Locale('it')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              home: HomeShell(store: _store),
+            ),
           ),
         ),
       ),

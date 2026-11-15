@@ -51,6 +51,27 @@ Future<void> _signOut(BuildContext context, AccountStore account) async {
   if (ok == true && context.mounted) await _attempt(context, account.signOut);
 }
 
+Future<void> _deleteAccount(BuildContext context, AccountStore account) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Eliminare l’account?'),
+      content: const Text('Cancello da Firebase i tuoi voti, i film visti, i telefoni registrati per le '
+          'notifiche e l’account stesso. Non si può annullare. I voti su questo telefono restano.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Annulla')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: CnvColors.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Elimina'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  if (await _attempt(context, account.deleteAccount) && context.mounted) say(context, 'Account eliminato.');
+}
+
 /// The "Account" box of the Voti page: sign in, the confirmation of the e-mail, whether the
 /// account is admitted, and for the administrator the list of admitted e-mails.
 class AccountSection extends StatelessWidget {
@@ -172,6 +193,12 @@ class AccountSection extends StatelessWidget {
           onPressed: account.busy ? null : () => _signOut(context, account),
           icon: const Icon(Icons.logout, size: 18),
           label: const Text('Esci dall’account'),
+        ),
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: CnvColors.red),
+          onPressed: account.busy ? null : () => _deleteAccount(context, account),
+          icon: const Icon(Icons.delete_forever, size: 18),
+          label: const Text('Elimina l’account'),
         ),
       ]);
     }
