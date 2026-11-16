@@ -5,11 +5,41 @@ import 'models.dart';
 import 'schedule.dart';
 
 class UpcomingShow {
-  const UpcomingShow({required this.start, required this.url, this.end});
+  const UpcomingShow({required this.start, required this.url, this.end, this.originalLanguage = false, this.age});
 
   final DateTime start;
   final DateTime? end; // estimated from the runtime
   final String url;
+  final bool originalLanguage;
+  final int? age;
+}
+
+/// The part of the day a show starts in, for the "Quando" filter. Shows after midnight
+/// belong to the evening before, so they are late ones.
+enum DayPart {
+  beforeSix('Prima delle 18'),
+  sixToNine('Dalle 18 alle 21'),
+  afterNine('Dalle 21 in poi');
+
+  const DayPart(this.label);
+
+  final String label;
+
+  static DayPart of(DateTime start) =>
+      start.hour < 6 || start.hour >= 21 ? afterNine : (start.hour >= 18 ? sixToNine : beforeSix);
+}
+
+/// Which shows count: the "Quando" and "Solo V.O." filters (none: all of them).
+class ShowFilter {
+  const ShowFilter({this.dayPart, this.originalLanguage = false});
+
+  final DayPart? dayPart;
+  final bool originalLanguage;
+
+  bool get any => dayPart != null || originalLanguage;
+
+  bool keeps(Show show, DateTime start) =>
+      (dayPart == null || DayPart.of(start) == dayPart) && (!originalLanguage || show.originalLanguage);
 }
 
 /// The next shows of a film: the rest of today, or the next day with shows when today is over.
@@ -40,8 +70,9 @@ class Programme {
   final Map<String, Map<String, Map<int, Map<String, List<UpcomingShow>>>>> byCinemaDay; // cinema -> day -> film -> sala
   final Map<int, Map<String, List<String>>> _announced; // film -> cinema -> announced dates
 
-  /// Only the shows still to come at [now]; with [cinema], only that cinema's.
-  factory Programme.build(CnvData data, DateTime now, {String? cinema}) {
+  /// Only the shows still to come at [now]; with [cinema], only that cinema's, and with
+  /// [filter] only the ones it keeps.
+  factory Programme.build(CnvData data, DateTime now, {String? cinema, ShowFilter filter = const ShowFilter()}) {
     final day = programmeDay(now);
     final upcoming = <int, Map<String, Map<String, Map<String, List<UpcomingShow>>>>>{};
     final firstByCinema = <int, Map<String, String>>{};
@@ -50,10 +81,13 @@ class Programme {
       if (s.day.compareTo(day) < 0 || (cinema != null && s.cinema != cinema)) continue;
       final start = showStart(s.day, s.time);
       if (s.day == day && start.isBefore(now)) continue; // already started
+      if (!filter.keeps(s, start)) continue;
       final show = UpcomingShow(
         start: start,
         end: showEnd(start, data.filmsById[s.filmId], data.settings),
         url: s.url.isNotEmpty ? s.url : (data.cinemasBySlug[s.cinema]?.url ?? ''),
+        originalLanguage: s.originalLanguage,
+        age: s.age,
       );
       upcoming.putIfAbsent(s.filmId, () => {}).putIfAbsent(s.day, () => {}).putIfAbsent(s.cinema, () => {})
           .putIfAbsent(s.sala, () => []).add(show);
