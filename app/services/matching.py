@@ -105,7 +105,7 @@ class MatchReport:
     merges: dict[int, int] = field(default_factory=dict)  # merged film id -> surviving film id
     merged_titles: list[tuple[str, str]] = field(default_factory=list)  # (merged title, surviving title)
     errors: list[str] = field(default_factory=list)
-    details_filled: int = 0  # films that got runtime and genre from TMDB
+    details_filled: int = 0  # films that got their TMDB details (runtime, genre, plot, credits)
 
 
 # ------------------------------------------------------------------
@@ -252,26 +252,35 @@ def _apply_details(film: Film, movie: TmdbMovie) -> None:
     film.runtime = movie.runtime
     film.genre = movie.main_genre
     film.details_tmdb_id = movie.id
+    film.overview = movie.overview or None
+    film.director = ", ".join(movie.directors) or None
+    film.cast_names = ", ".join(movie.cast) or None
+    film.credits_tmdb_id = movie.id
 
 
-DETAILS_PER_SYNC = 60  # TMDB requests for runtime and genre in one sync: the rest go to the next one
+DETAILS_PER_SYNC = 60  # films whose TMDB details are fetched in one sync: the rest go to the next one
 
 
 async def fill_film_details(db: Session, fetcher: MovieDetails, report: MatchReport | None = None) -> int:
-    """Fetch runtime and main genre of confirmed films that do not have them yet.
+    """Fetch runtime, main genre, plot, director and cast of confirmed films that miss them.
 
-    Films that left theaters are skipped (no show times to end), and a film whose TMDB
-    match changed is fetched again. Saves after each film; returns how many got details.
+    A film whose TMDB match changed is fetched again, and so are the films that had only
+    runtime and genre (from before plot and cast), a batch per sync. Films that left
+    theaters come last. Saves after each film; returns how many got details.
     """
     films = (
         db.query(Film)
         .filter(
             Film.tmdb_id.isnot(None),
             Film.tmdb_match_status.in_((STATUS_MATCHED, STATUS_MANUAL)),
-            Film.status != "uscito",
-            or_(Film.details_tmdb_id.is_(None), Film.details_tmdb_id != Film.tmdb_id),
+            or_(
+                Film.details_tmdb_id.is_(None),
+                Film.details_tmdb_id != Film.tmdb_id,
+                Film.credits_tmdb_id.is_(None),
+                Film.credits_tmdb_id != Film.tmdb_id,
+            ),
         )
-        .order_by(Film.id)
+        .order_by(Film.status == "uscito", Film.id)
         .limit(DETAILS_PER_SYNC)
         .all()
     )
@@ -282,11 +291,12 @@ async def fill_film_details(db: Session, fetcher: MovieDetails, report: MatchRep
         except httpx.HTTPError as err:
             logger.warning("Dettagli TMDB di '%s' non disponibili: %s", film.raw_title, err)
             if report is not None:
-                report.errors.append(f"Durata e genere di '{film.raw_title}': {err}")
+                report.errors.append(f"Dettagli TMDB di '{film.raw_title}': {err}")
             break  # TMDB is not answering: the next sync tries again
         if movie is None:
             # No longer on TMDB: nothing to show, and no point asking every day
             film.runtime, film.genre, film.details_tmdb_id = None, None, film.tmdb_id
+            film.overview, film.director, film.cast_names, film.credits_tmdb_id = None, None, None, film.tmdb_id
         else:
             _apply_details(film, movie)
             filled += 1

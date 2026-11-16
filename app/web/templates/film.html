@@ -29,6 +29,11 @@
             {% elif film.status == "uscito" %}Non è arrivato in sala
             {% endif %}
         </p>
+        {% if film.has_tmdb_credits %}
+        {% if film.director %}<p class="small">Regia: {{ film.director }}</p>{% endif %}
+        {% if film.cast_names %}<p class="small">Con: {{ film.cast_names }}</p>{% endif %}
+        {% if film.overview %}<p class="film-plot">{{ film.overview }}</p>{% endif %}
+        {% endif %}
         {% include "_vote.html" %}
     </div>
 </article>

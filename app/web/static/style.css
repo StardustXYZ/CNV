@@ -395,6 +395,7 @@ a.show-time:hover { border-color: var(--accent); color: var(--accent); }
 .film-page-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .film-page-info h1 { font-size: 1.5rem; line-height: 1.2; }
 .film-page-info .vote-box { max-width: 18rem; }
+.film-plot { line-height: 1.5; max-width: 42rem; }
 .section-title { font-size: 1.1rem; }
 .film-cinemas { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.75rem; }
 .film-cinema { background: var(--surface); border-radius: var(--radius); padding: 0.75rem 0.9rem; }

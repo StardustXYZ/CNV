@@ -663,6 +663,20 @@ def test_film_page_without_shows_and_titles_link_to_it(client, session, cinema):
     assert f'href="/film/{frankie.id}" class="gone-title film-title-link"' in client.get("/").text
 
 
+def test_film_page_shows_plot_director_and_cast_of_the_confirmed_match(client, session, cinema):
+    clay = add_film(session, "Clayface", "in_sala", [0], cinema)
+    clay.tmdb_id, clay.tmdb_match_status = 5, "abbinato"
+    clay.overview, clay.director, clay.cast_names, clay.credits_tmdb_id = "Un mostro <di> fango.", "Ada Rossi", "Uno, Due", 5
+    session.commit()
+    page = client.get(f"/film/{clay.id}").text
+    assert "Regia: Ada Rossi" in page and "Con: Uno, Due" in page
+    assert "Un mostro &lt;di&gt; fango." in page  # TMDB text is escaped
+
+    clay.tmdb_id = 6  # the match changed: those credits belong to the old film
+    session.commit()
+    assert "Regia:" not in client.get(f"/film/{clay.id}").text
+
+
 def test_home_filters_by_genre_cinema_and_title(client, session, cinema):
     garden = Cinema(slug="garden", name="Cinema Garden (Rende)", url="https://garden.example")
     session.add(garden)

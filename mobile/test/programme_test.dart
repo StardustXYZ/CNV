@@ -17,7 +17,11 @@ CnvData sample() => CnvData.fromJson({
       ],
       'films': [
         {'id': 1, 'title': 'Clayface', 'status': 'in_sala', 'runtime': 100, 'genre': 'Horror', 'since': '2026-11-05'},
-        {'id': 2, 'title': 'Hope', 'status': 'in_sala', 'genre': 'Fantascienza', 'since': '2026-11-13'},
+        {
+          'id': 2, 'title': 'Hope', 'status': 'in_sala', 'genre': 'Fantascienza', 'since': '2026-11-13',
+          'director': 'Ada Rossi', 'cast': 'Uno Primo, Due Secondo',
+          'plot': 'In un villaggio sperduto ${'qualcosa di strano accade ogni notte, ' * 12}e nessuno sa perché.',
+        },
         {'id': 3, 'title': 'Dune', 'status': 'in_uscita'},
         {'id': 4, 'title': 'Avengers', 'status': 'in_uscita'},
         {'id': 5, 'title': 'Frankie', 'status': 'in_sala', 'last_seen': '2026-11-10'}, // no shows left

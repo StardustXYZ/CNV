@@ -20,7 +20,7 @@ from app.services.matching import (
     score_candidates,
 )
 from app.services.sync import run_sync
-from app.services.tmdb import TmdbMovie
+from app.services.tmdb import TmdbClient, TmdbMovie
 
 TODAY = date(2026, 10, 23)
 
@@ -325,6 +325,44 @@ def test_tmdb_details_have_runtime_and_genres_search_results_do_not():
     assert TmdbMovie.from_api({"id": 2, "title": "X", "runtime": 0, "genres": []}).runtime is None
 
 
+def test_tmdb_details_have_plot_directors_and_the_main_cast():
+    movie = TmdbMovie.from_api({
+        "id": 1, "title": "Mammina", "genres": [], "overview": "  Una madre. ",
+        "credits": {
+            "crew": [{"name": "Ada Rossi", "job": "Director"}, {"name": "Bea Neri", "job": "Writer"},
+                     {"name": "Ada Rossi", "job": "Director"}, {"name": "Carlo Blu", "job": "Director"}],
+            "cast": [{"name": f"Attore {n}", "order": n} for n in (6, 2, 0, 1, 5, 3, 4)],
+        },
+    })
+    assert movie.overview == "Una madre."
+    assert movie.directors == ("Ada Rossi", "Carlo Blu")
+    assert movie.cast == ("Attore 0", "Attore 1", "Attore 2", "Attore 3", "Attore 4")  # the first five billed
+    bare = TmdbMovie.from_api({"id": 2, "title": "X"})
+    assert (bare.overview, bare.directors, bare.cast) == ("", (), ())
+
+
+@pytest.mark.asyncio
+async def test_get_movie_asks_credits_in_italian_and_the_english_plot_when_missing():
+    asked = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(dict(request.url.params))
+        italian = request.url.params["language"] == "it-IT"
+        body = {"id": 7, "title": "Film", "genres": [], "overview": "" if italian else "An English plot."}
+        if italian:
+            body["credits"] = {"crew": [{"name": "Ada Rossi", "job": "Director"}], "cast": []}
+        return httpx.Response(200, json=body)
+
+    tmdb = TmdbClient(api_key="test")
+    tmdb._client = httpx.AsyncClient(base_url="https://tmdb.test", transport=httpx.MockTransport(handler))
+    async with tmdb:
+        movie = await tmdb.get_movie(7)
+    assert movie.overview == "An English plot."
+    assert movie.directors == ("Ada Rossi",)
+    assert asked[0]["append_to_response"] == "credits"
+    assert [a["language"] for a in asked] == ["it-IT", "en-US"]
+
+
 class FakeDetails:
     def __init__(self, movies: dict[int, TmdbMovie | None], fail_on: int | None = None) -> None:
         self.movies = movies
@@ -339,37 +377,43 @@ class FakeDetails:
 
 
 def _details(tmdb_id: int, runtime: int, genre: str) -> TmdbMovie:
-    return TmdbMovie(tmdb_id, "x", "x", runtime=runtime, genres=(genre,), has_details=True)
+    return TmdbMovie(tmdb_id, "x", "x", runtime=runtime, genres=(genre,), has_details=True,
+                     overview=f"Trama {tmdb_id}", directors=("Ada Rossi",), cast=("Uno", "Due"))
 
 
 @pytest.mark.asyncio
 async def test_fill_film_details(db):
     from app.services.matching import MatchReport, fill_film_details
 
-    def film(title, tmdb_id, status="abbinato", programme="in_sala", details_for=None):
+    def film(title, tmdb_id, status="abbinato", programme="in_sala", details_for=None, credits_for=None):
         f = Film(raw_title=title, normalized_title=title.lower(), tmdb_id=tmdb_id, tmdb_match_status=status,
-                 status=programme, details_tmdb_id=details_for)
+                 status=programme, details_tmdb_id=details_for, credits_tmdb_id=credits_for)
         db.add(f)
         db.flush()
         return f
 
+    gone = film("Uscito", 14, programme="uscito")  # left theaters: last, but fetched too (Watchlist, Visti)
     sure = film("Sicuro", 10)
-    changed = film("Cambiato", 11, status="manuale", details_for=99)  # match changed: fetch again
-    done = film("Fatto", 12, details_for=12)
+    changed = film("Cambiato", 11, status="manuale", details_for=99, credits_for=99)  # match changed: fetch again
+    done = film("Fatto", 12, details_for=12, credits_for=12)
     doubt = film("Incerto", 13, status="da_verificare")
-    gone = film("Uscito", 14, programme="uscito")
     deleted = film("Sparito da TMDB", 15)
+    old = film("Senza trama", 16, details_for=16)  # runtime and genre from before plot and cast
     db.commit()
-    tmdb = FakeDetails({10: _details(10, 115, "Commedia"), 11: _details(11, 90, "Horror")})
+    tmdb = FakeDetails({10: _details(10, 115, "Commedia"), 11: _details(11, 90, "Horror"),
+                        14: _details(14, 100, "Dramma"), 16: _details(16, 80, "Giallo")})
 
     report = MatchReport()
-    assert await fill_film_details(db, tmdb, report) == 2
-    assert tmdb.calls == [10, 11, 15]
+    assert await fill_film_details(db, tmdb, report) == 4
+    assert tmdb.calls == [10, 11, 15, 16, 14]
     assert (sure.runtime, sure.genre, sure.details_tmdb_id) == (115, "Commedia", 10)
+    assert (sure.overview, sure.director, sure.cast_names, sure.credits_tmdb_id) == ("Trama 10", "Ada Rossi", "Uno, Due", 10)
     assert (changed.runtime, changed.genre) == (90, "Horror")
-    assert deleted.details_tmdb_id == 15 and deleted.runtime is None  # not asked again
-    assert done.runtime is None and doubt.details_tmdb_id is None and gone.details_tmdb_id is None
-    assert sure.has_tmdb_details and not doubt.has_tmdb_details
+    assert (old.overview, old.runtime) == ("Trama 16", 80)
+    assert gone.director == "Ada Rossi"
+    assert deleted.details_tmdb_id == 15 and deleted.credits_tmdb_id == 15 and deleted.runtime is None  # not asked again
+    assert done.runtime is None and doubt.details_tmdb_id is None
+    assert sure.has_tmdb_details and sure.has_tmdb_credits and not doubt.has_tmdb_credits
 
     # Next time nothing is left to fetch
     tmdb.calls.clear()

@@ -30,6 +30,9 @@ class Film {
     this.lastSeen,
     this.left,
     this.since,
+    this.plot,
+    this.director,
+    this.cast,
   });
 
   final int id;
@@ -45,6 +48,9 @@ class Film {
   final String? lastSeen;
   final String? left; // day it left theaters
   final String? since; // first day shown in the area
+  final String? plot; // from TMDB, in Italian or else in English
+  final String? director; // "A, B" when more than one
+  final String? cast; // the main actors, "A, B, C"
 
   bool get inSala => status == 'in_sala';
   bool get inUscita => status == 'in_uscita';
@@ -63,6 +69,9 @@ class Film {
         lastSeen: j['last_seen'] as String?,
         left: j['left'] as String?,
         since: j['since'] as String?,
+        plot: j['plot'] as String?,
+        director: j['director'] as String?,
+        cast: j['cast'] as String?,
       );
 }
 

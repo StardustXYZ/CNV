@@ -62,6 +62,12 @@ class FilmPage extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (current.director != null || current.cast != null || current.plot != null) ...[
+                  const SizedBox(height: 12),
+                  if (current.director case final d?) _Credit(label: 'Regia', names: d),
+                  if (current.cast case final c?) _Credit(label: 'Con', names: c),
+                  if (current.plot case final p?) Padding(padding: const EdgeInsets.only(top: 6), child: PlotText(p)),
+                ],
                 const SizedBox(height: 14),
                 VoteButtons(film: current, data: data, today: today),
                 const SizedBox(height: 18),
@@ -193,5 +199,63 @@ class FilmPage extends StatelessWidget {
       return 'Nessuno spettacolo in programma.\nEsce dalle sale il ${longDate(addDays(film.lastSeen!, days), today)} se non ricompare.';
     }
     return 'Nessuno spettacolo in programma.';
+  }
+}
+
+class _Credit extends StatelessWidget {
+  const _Credit({required this.label, required this.names});
+
+  final String label;
+  final String names;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Text.rich(TextSpan(children: [
+          TextSpan(text: '$label: ', style: const TextStyle(color: CnvColors.textMuted)),
+          TextSpan(text: names),
+        ]), style: const TextStyle(fontSize: 13)),
+      );
+}
+
+/// The plot, a few lines and "Altro" to read all of it.
+class PlotText extends StatefulWidget {
+  const PlotText(this.text, {super.key});
+
+  final String text;
+
+  @override
+  State<PlotText> createState() => _PlotTextState();
+}
+
+class _PlotTextState extends State<PlotText> {
+  static const _lines = 4;
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 14, height: 1.4);
+    return LayoutBuilder(builder: (context, size) {
+      final painter = TextPainter(
+        text: TextSpan(text: widget.text, style: style),
+        maxLines: _lines,
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout(maxWidth: size.maxWidth);
+      final long = painter.didExceedMaxLines;
+      painter.dispose();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.text, style: style, maxLines: _open ? null : _lines, overflow: _open ? null : TextOverflow.ellipsis),
+          if (long)
+            TextButton(
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+              onPressed: () => setState(() => _open = !_open),
+              child: Text(_open ? 'Meno' : 'Altro'),
+            ),
+        ],
+      );
+    });
   }
 }
