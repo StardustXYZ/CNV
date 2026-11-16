@@ -20,7 +20,7 @@ Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Un
 
 Sul telefono CNV è un'app Android (cartella `mobile/`, in Flutter) che legge i dati aggiornati ogni notte da GitHub: film in sala con gli orari, in uscita con il calendario, pagine dei cinema, voti **V / ? / ✓**, watchlist e diario per Letterboxd, statistiche dei film visti.
 
-Con l'**account** (Google, oppure email e password) i voti si salvano anche online e si ritrovano su un altro telefono, e arrivano le **notifiche** dei film nuovi in sala (tutti, solo i propri V, o nessuna). L'account è su invito: chi gestisce CNV aggiunge le email ammesse dall'app. Ognuno vede solo i suoi voti. Senza account l'app funziona lo stesso, con i voti solo sul telefono.
+Con l'**account** (Google, oppure email e password) i voti si salvano anche online e si ritrovano su un altro telefono, e arrivano le **notifiche** dei film nuovi in sala (tutti, solo i propri V, o nessuna; "Esce oggi" se il primo spettacolo è quel giorno). L'account è su invito: chi gestisce CNV aggiunge le email ammesse dall'app. Ognuno vede solo i suoi voti. Senza account l'app funziona lo stesso, con i voti solo sul telefono.
 
 ### Installarla
 
@@ -99,6 +99,8 @@ Toccando un orario si apre la pagina d'acquisto di quello spettacolo sul sito de
 | **Uscito** | Non compare in nessun cinema da almeno 7 giorni (3 per gli eventi). La data di uscita dalle sale è quella del suo ultimo spettacolo. Anche un film annunciato che nessun cinema ha poi proiettato diventa "uscito", 7 giorni dopo l'ultimo annuncio, senza data ("Non è arrivato in sala"): se l'avevi segnato V o ? finisce in Watchlist come gli altri. Se un cinema lo annuncia di nuovo resta "In uscita"; se ricompare in programmazione torna "In sala" |
 
 Un film è un "evento" solo se lo sono tutti i suoi spettacoli attuali: un'anteprima prima della programmazione normale non basta.
+
+**Ultimi giorni** (in prova): ogni cinema pubblica la programmazione per qualche giorno; conta come pubblicata fino all'ultimo giorno con almeno metà dei film di oggi (dopo restano solo le prevendite). Un film in sala che in tutti i suoi cinema finisce prima di quel giorno è agli ultimi giorni. Per ora il controllo notturno li scrive solo nel registro e li salva, senza notifiche; `python -m app.push verifica` confronta le previsioni passate con gli spettacoli veri.
 
 Se il sito di un cinema non risponde, i suoi film non vengono considerati spariti, per al massimo 7 giorni. Gli spettacoli che un cinema toglie o sposta spariscono anche da CNV al sync successivo.
 
