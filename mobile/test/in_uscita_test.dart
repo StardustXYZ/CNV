@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cnv/data/models.dart';
 import 'package:cnv/data/programme.dart';
 import 'package:cnv/data/repository.dart';
 import 'package:cnv/main.dart';
+import 'package:cnv/pages/film_page.dart';
 import 'package:cnv/pages/in_uscita_page.dart';
 
 import 'programme_test.dart' show sample;
@@ -26,6 +28,32 @@ void main() {
     final films = comingFilms(programme, '');
     expect([for (final c in films) (c.film.title, c.first)], [('Avengers', '2026-12-16'), ('Dune', null)]);
     expect([for (final c in comingFilms(programme, 'dun')) c.film.title], ['Dune']);
+  });
+
+  testWidgets("the film page links the film's page on each cinema site, the soonest first", (tester) async {
+    await openInUscita(tester);
+    await tester.tap(find.text('Avengers'));
+    await tester.pumpAndSettle();
+
+    final chips = find.byType(ActionChip);
+    await tester.scrollUntilVisible(chips.last, 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Sui siti dei cinema'), findsOneWidget);
+    final names = [for (final c in tester.widgetList<ActionChip>(chips)) (c.label as Text).data];
+    expect(names, ['Andromeda River', 'Cinema Garden']); // presale on 16/12, then announced for 18/12
+
+    // Dune has no page on any site: no section
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dune'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sui siti dei cinema'), findsNothing);
+  });
+
+  test('a film that left without ever being shown says so', () {
+    const never = Film(id: 9, title: 'Mai visto', status: 'uscito');
+    const left = Film(id: 8, title: 'Visto', status: 'uscito', since: '2026-10-01', left: '2026-11-01');
+    expect(FilmPage.statusLine(never, const [], '2026-11-14'), 'Non è arrivato in sala');
+    expect(FilmPage.statusLine(left, const [], '2026-11-14'), 'Uscito dalle sale il 1 novembre');
   });
 
   testWidgets('the list: dates as headers, cinemas with their own date', (tester) async {

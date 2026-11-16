@@ -31,6 +31,22 @@ void main() {
     expect(inMenu('Cinema Garden'), findsOneWidget);
     // Clayface still today at both (21:00 and 20:30)
     expect(find.descendant(of: find.byType(Drawer), matching: find.text('1')), findsNWidgets(2));
+    // Each cinema's site, one touch away
+    expect(find.byTooltip('Sito di Andromeda River'), findsOneWidget);
+    expect(find.byTooltip('Sito di Cinema Garden'), findsOneWidget);
+  });
+
+  testWidgets('cinema page: the films coming here, with the date at this cinema', (tester) async {
+    await openApp(tester);
+    await openMenu(tester);
+    await tester.tap(inMenu('Cinema Garden'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Dune'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('In arrivo qui'), findsOneWidget);
+    expect(find.text('Dal 18 dicembre'), findsOneWidget); // Avengers: the Garden's date, not Andromeda's
+    expect(find.text('Data da definire'), findsOneWidget); // Dune
+    expect(tester.getTopLeft(find.text('Avengers')).dy, lessThan(tester.getTopLeft(find.text('Dune')).dy));
   });
 
   testWidgets('cinema page: days in the calendar and the films of the chosen day', (tester) async {
@@ -49,7 +65,8 @@ void main() {
 
     await tester.tap(find.text('Mer 16/12'));
     await tester.pumpAndSettle();
-    expect(find.text('Avengers'), findsOneWidget);
+    expect(find.text('Avengers'), findsNWidgets(2)); // that day's show, and "In arrivo qui"
+    expect(find.text('20:30'), findsOneWidget);
     expect(find.text('Clayface'), findsNothing);
   });
 

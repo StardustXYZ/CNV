@@ -130,18 +130,21 @@ class _InUscitaPageState extends State<InUscitaPage> {
         ));
         lastHeader = header;
       }
-      widgets.add(_ComingCard(coming: c, today: today, store: widget.store));
+      widgets.add(ComingCard(coming: c, today: today, store: widget.store));
     }
     return widgets;
   }
 }
 
-class _ComingCard extends StatelessWidget {
-  const _ComingCard({required this.coming, required this.today, required this.store});
+/// A film coming out: poster, title, its cinemas with their dates, and the votes. On a
+/// cinema's page ([showCinemas] false) only the date there.
+class ComingCard extends StatelessWidget {
+  const ComingCard({super.key, required this.coming, required this.today, required this.store, this.showCinemas = true});
 
   final ComingFilm coming;
   final String today;
   final DataStore store;
+  final bool showCinemas;
 
   @override
   Widget build(BuildContext context) {
@@ -167,7 +170,11 @@ class _ComingCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   FilmMeta(film: film),
                   const SizedBox(height: 6),
-                  for (final r in coming.releases)
+                  if (!showCinemas)
+                    Text(coming.first == null ? 'Data da definire' : 'Dal ${longDate(coming.first!, today)}',
+                        style: const TextStyle(fontSize: 13, color: CnvColors.accent)),
+                  if (showCinemas)
+                    for (final r in coming.releases)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
                       child: Wrap(

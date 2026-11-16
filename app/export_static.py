@@ -50,10 +50,12 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         .filter(Showtime.date >= today - timedelta(days=SHOWS_FROM_DAYS_AGO))
         .order_by(Showtime.date, Showtime.time)
     ]
+    announcements = db.query(ComingSoon).all()
     coming = [
         {"f": c.film_id, "c": slug_by_id[c.cinema_id], "d": c.release_date.isoformat() if c.release_date else None}
-        for c in db.query(ComingSoon)
+        for c in announcements
     ]
+    pages = _film_pages(db, announcements, slug_by_id, today - timedelta(days=SHOWS_FROM_DAYS_AGO))
     # First day each film was screened here: the phone puts the latest arrivals first
     since = dict(db.query(Showtime.film_id, func.min(Showtime.date)).group_by(Showtime.film_id))
     films = [
@@ -95,8 +97,29 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
         "films": films,
         "shows": shows,
         "coming": coming,
+        "pages": pages,
         "merged": merged,
     }
+
+
+def _film_pages(db: Session, announcements: list[ComingSoon], slug_by_id: dict[int, str], since: date) -> list[dict]:
+    """The film's page on each cinema's site, for the films it shows or announces.
+
+    The page of its latest show wins; otherwise the announcement on the cinema's own site,
+    then one on a shared site (cosenzacinema.it).
+    """
+    found: dict[tuple[int, int], tuple[int, str]] = {}  # (film, cinema) -> (priority, url)
+
+    def offer(film_id: int, cinema_id: int, priority: int, url: str | None) -> None:
+        key = (film_id, cinema_id)
+        if url and (key not in found or priority >= found[key][0]):
+            found[key] = (priority, url)
+
+    for a in announcements:
+        offer(a.film_id, a.cinema_id, 2 if a.source == slug_by_id[a.cinema_id] else 1, a.source_url)
+    for s in db.query(Showtime).filter(Showtime.date >= since).order_by(Showtime.date, Showtime.time):
+        offer(s.film_id, s.cinema_id, 3, s.source_url)  # in date order: the latest show's page stays
+    return [{"f": film_id, "c": slug_by_id[cinema_id], "u": url} for (film_id, cinema_id), (_, url) in sorted(found.items())]
 
 
 def build_site(out_dir: Path, data: dict) -> None:

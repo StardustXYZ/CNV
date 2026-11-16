@@ -36,6 +36,10 @@ CnvData sample() => CnvData.fromJson({
         {'f': 3, 'c': 'garden', 'd': null},
         {'f': 4, 'c': 'garden', 'd': '2026-12-18'},
       ],
+      'pages': [
+        {'f': 4, 'c': 'andromeda', 'u': 'https://andromeda.example/avengers'},
+        {'f': 4, 'c': 'garden', 'u': 'https://garden.example/avengers'},
+      ],
       'merged': {'42': 1},
       'not_updated': {'garden': '2026-11-13'},
     });
@@ -48,6 +52,9 @@ void main() {
     expect(data.filmsById[1]!.title, 'Clayface');
     expect(data.merged, {42: 1});
     expect(data.notUpdated, {'garden': '2026-11-13'});
+    expect(data.sitePages[4], {'andromeda': 'https://andromeda.example/avengers', 'garden': 'https://garden.example/avengers'});
+    expect(data.sitePages[1], isNull);
+    expect(CnvData.fromJson({'generated_at': '2026-11-14T03:00+01:00'}).sitePages, isEmpty); // an older file
     expect(data.generatedAt.toUtc(), DateTime.utc(2026, 11, 14, 2, 0));
   });
 
