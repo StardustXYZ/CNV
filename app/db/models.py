@@ -80,6 +80,7 @@ class Film(Base):
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")
     aliases: Mapped[list[FilmAlias]] = relationship(back_populates="film", cascade="all, delete-orphan")
     coming_soon: Mapped[list[ComingSoon]] = relationship(back_populates="film", cascade="all, delete-orphan")
+    last_days: Mapped[list[LastDays]] = relationship(back_populates="film", cascade="all, delete-orphan")
     seen_cinema: Mapped[Cinema | None] = relationship()
 
     @property
@@ -208,6 +209,28 @@ class FilmMerge(Base):
 
     def __repr__(self) -> str:
         return f"<FilmMerge {self.old_id} -> {self.new_id}>"
+
+
+class LastDays(Base):
+    """A guess that a film is in its last days: the cinemas publish later days without it.
+
+    One row per film and guessed last day, kept to check the guesses afterwards
+    (``python -m app.push verifica``) and to notify each one once.
+    """
+
+    __tablename__ = "last_days"
+    __table_args__ = (UniqueConstraint("film_id", "last_day", name="uq_last_days_film_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    film_id: Mapped[int] = mapped_column(ForeignKey("films.id"), index=True)
+    last_day: Mapped[date] = mapped_column(Date)
+    found_on: Mapped[date] = mapped_column(Date)  # first sync that guessed it
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    film: Mapped[Film] = relationship(back_populates="last_days")
+
+    def __repr__(self) -> str:
+        return f"<LastDays film={self.film_id} until={self.last_day}>"
 
 
 class ComingSoon(Base):

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import sys
 
+from datetime import date, time
+
 from app import push
-from app.db.models import Film
+from app.db.models import Cinema, Film, Showtime
 
 
 def film(db, title, status="in_sala", pushed=False, **fields):
@@ -28,6 +30,33 @@ def test_prepare_notifies_each_new_film_once(db):
     assert hope.in_sala_pushed and clay.in_sala_pushed
     assert push.prepare(db) == {}  # nothing new the next night
     assert push.prepare(db, test=True)["title"] == "CNV"  # manual run with "prova"
+
+
+def test_prepare_marks_the_films_out_today(db):
+    garden = Cinema(slug="garden", name="Garden", url="https://garden.example")
+    db.add(garden)
+    out_today, back = film(db, "Esce oggi"), film(db, "Ritorna")
+    db.flush()
+    db.add_all([
+        Showtime(film_id=out_today.id, cinema_id=garden.id, date=date(2026, 11, 16), time=time(21, 0), source_url=""),
+        Showtime(film_id=back.id, cinema_id=garden.id, date=date(2026, 5, 2), time=time(21, 0), source_url=""),  # shown in May
+        Showtime(film_id=back.id, cinema_id=garden.id, date=date(2026, 11, 16), time=time(18, 0), source_url=""),
+    ])
+    db.commit()
+    payload = push.prepare(db, today=date(2026, 11, 16))
+    assert payload["films"] == [
+        {"id": out_today.id, "title": "Esce oggi", "today": True},
+        {"id": back.id, "title": "Ritorna"},
+    ]
+
+
+def test_notification_says_out_today_for_a_single_film():
+    payload = {"films": [{"id": 1, "title": "Hope", "today": True}], "more": 0}
+    assert push.notification_for(payload, {"1": "V"}, "v") == ("🎬 Esce oggi: Hope", "Hope")
+    assert push.notification_for(payload, {}, "all") == ("🎬 Esce oggi: Hope", "Hope")
+    back = {"films": [{"id": 1, "title": "Hope"}], "more": 0}
+    assert push.notification_for(back, {"1": "V"}, "v")[0] == "🎬 In sala: Hope"
+    assert push.notification_for(back, {}, "all")[0] == "🎬 Nuovo in sala: Hope"
 
 
 def test_prepare_keeps_the_message_small(db):
@@ -125,6 +154,42 @@ def test_send_fcm_to_admitted_accounts_that_asked():
     assert fake.sent == [(["tok-vivo", "tok-morto"], "🎬 In sala: Hope", "Hope · e anche: Clayface, Dune")]
     assert fake.removed == [("capo", "a2")]  # the app was removed from that phone
     assert counts == {"accounts": 1, "phones": 2, "sent": 1, "removed": 1, "errors": 0}
+
+
+def test_prepare_command_lists_the_last_days_and_the_check_command_runs(tmp_path, monkeypatch, capsys):
+    from datetime import timedelta
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.models import Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'cnv.db'}")
+    Base.metadata.create_all(engine)
+    make_session = sessionmaker(bind=engine)
+    today = date.today()
+    with make_session() as db:
+        cinema = Cinema(slug="garden", name="Garden", url="https://garden.example")
+        db.add(cinema)
+        stays, leaves = film(db, "Resta", pushed=True), film(db, "Se ne va", pushed=True)
+        for f, days in ((stays, (0, 1, 2)), (leaves, (0, 1))):
+            for n in days:
+                db.add(Showtime(film_id=f.id, cinema_id=cinema.id, date=today + timedelta(days=n), time=time(21, 0),
+                                source_url=""))
+        db.commit()
+    monkeypatch.setattr(push, "SessionLocal", make_session)
+    monkeypatch.setattr(push, "init_db", lambda: None)
+
+    monkeypatch.setattr(sys, "argv", ["app.push", "prepare", "--out", str(tmp_path / "notifica.json")])
+    assert push.main() == 0
+    out = capsys.readouterr().out
+    assert "Ultimi giorni (solo nel registro, nessuna notifica): 1 film" in out
+    assert f"Se ne va: ultimo giorno {today + timedelta(days=1):%d/%m}" in out
+
+    monkeypatch.setattr(sys, "argv", ["app.push", "verifica"])
+    assert push.main() == 0
+    assert "Nessun ultimo giorno da controllare per ora" in capsys.readouterr().out
+    engine.dispose()
 
 
 def test_send_command_without_firebase_secret(tmp_path, monkeypatch, capsys):

@@ -8,7 +8,12 @@ GitHub Actions runs this after the nightly sync, in two steps:
 ``prepare`` picks the films that became "in sala" since the last notification, marks
 them and writes the message; ``send`` delivers it, once the site is published, to the
 Android app (Firebase Cloud Messaging): every admitted account that turned notifications
-on gets them on its phones, with its V films first (or only those, if it chose so).
+on gets them on its phones, with its V films first (or only those, if it chose so). A
+film whose first show is that very day "esce oggi".
+
+``prepare`` also writes in the log the films in their last days (app/services/last_days.py)
+and keeps the guesses, without notifying them yet: ``python -m app.push verifica``
+compares the past guesses with the shows the films really had.
 
 ``send`` needs the secret ``FIREBASE_SERVICE_ACCOUNT``; without it, it does nothing.
 """
@@ -16,16 +21,18 @@ on gets them on its phones, with its V films first (or only those, if it chose s
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
+from datetime import date, timedelta
 import json
 import os
 from pathlib import Path
 import sys
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.engine import SessionLocal, init_db
-from app.db.models import Film
+from app.db.models import Film, Showtime
+from app.services.last_days import check_guesses, record_leaving
 
 MAX_FILMS = 10  # enough for a notification; the rest is counted ("e altri 3")
 
@@ -40,19 +47,28 @@ def new_in_sala(db: Session) -> list[Film]:
     return sorted(films, key=lambda f: _title(f).lower())
 
 
-def prepare(db: Session, test: bool = False) -> dict:
+def prepare(db: Session, test: bool = False, today: date | None = None) -> dict:
     """The message for the films new in theaters (empty: nothing to say). Marks them as notified.
 
     They are marked even when notifications are not set up, so turning them on later does
-    not bring a flood of old news.
+    not bring a flood of old news. Films shown for the first time today get "today".
     """
+    today = today or date.today()
     films = new_in_sala(db)
     for film in films:
         film.in_sala_pushed = True
     db.commit()
     if films:
+        first_day = dict(
+            db.query(Showtime.film_id, func.min(Showtime.date))
+            .filter(Showtime.film_id.in_([f.id for f in films]))
+            .group_by(Showtime.film_id)
+        )
         return {
-            "films": [{"id": f.id, "title": _title(f)} for f in films[:MAX_FILMS]],
+            "films": [
+                {"id": f.id, "title": _title(f), **({"today": True} if first_day.get(f.id) == today else {})}
+                for f in films[:MAX_FILMS]
+            ],
             "more": max(0, len(films) - MAX_FILMS),
         }
     if test:
@@ -84,16 +100,21 @@ def notification_for(payload: dict, votes: dict, mode: str | None) -> tuple[str,
     films = payload["films"]
     wanted = [f["title"] for f in films if votes.get(str(f["id"])) == "V"]
     others = [f["title"] for f in films if votes.get(str(f["id"])) != "V"]
+    out_today = {f["title"] for f in films if f.get("today")}
     more = payload.get("more", 0)
+
+    def one(title: str, new: bool) -> str:
+        return f"🎬 Esce oggi: {title}" if title in out_today else (f"🎬 Nuovo in sala: {title}" if new else f"🎬 In sala: {title}")
+
     if wanted:
-        title = f"🎬 In sala: {wanted[0]}" if len(wanted) == 1 else f"🎬 In sala {len(wanted)} film che volevi vedere"
+        title = one(wanted[0], new=False) if len(wanted) == 1 else f"🎬 In sala {len(wanted)} film che volevi vedere"
         body = _join(wanted)
         if mode == "all" and (others or more):
             body += f" · e anche: {_join(others)}" + (f" e altri {more}" if more else "")
     elif mode == "v":
         return None
     else:
-        title = f"🎬 Nuovo in sala: {others[0]}" if len(films) == 1 and not more else f"🎬 {len(films) + more} film nuovi in sala"
+        title = one(others[0], new=True) if len(films) == 1 and not more else f"🎬 {len(films) + more} film nuovi in sala"
         body = _join(others) + (f" e altri {more}" if more else "")
     if len(body) > MAX_BODY:
         body = body[: MAX_BODY - 1].rstrip(", ") + "…"
@@ -217,14 +238,32 @@ def main() -> int:
     prep.add_argument("--prova", action="store_true", help="senza film nuovi, un messaggio di prova")
     snd = commands.add_parser("send", help="invia il messaggio all'app Android")
     snd.add_argument("file", type=Path)
+    commands.add_parser("verifica", help="confronta gli ultimi giorni indovinati con gli spettacoli veri")
     args = parser.parse_args()
 
     if args.command == "prepare":
         init_db()
         with SessionLocal() as db:
             payload = prepare(db, test=args.prova)
+            # Read inside the session: after it closes the films can no longer be read
+            leaving = [(_title(lf.film), lf.last_day) for lf in record_leaving(db, date.today())]
         args.out.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         print(f"Film nuovi in sala: {len(payload.get('films', []))}" if payload else "Nessuna novità da notificare")
+        print(f"Ultimi giorni (solo nel registro, nessuna notifica): {len(leaving)} film")
+        for title, last_day in leaving:
+            print(f"   * {title}: ultimo giorno {last_day:%d/%m}")
+        return 0
+
+    if args.command == "verifica":
+        init_db()
+        with SessionLocal() as db:
+            checks = check_guesses(db, date.today())
+        for c in checks:
+            real = f"{c.real_last_day:%d/%m}" if c.real_last_day else "nessuno"
+            outcome = "giusto" if c.right else "SBAGLIATO"
+            print(f"{outcome:9} {c.title}: visto il {c.found_on:%d/%m}, ultimo giorno {c.last_day:%d/%m}, vero {real}")
+        right = sum(c.right for c in checks)
+        print(f"Indovinati {right} su {len(checks)}" if checks else "Nessun ultimo giorno da controllare per ora")
         return 0
 
     payload = json.loads(args.file.read_text(encoding="utf-8")) if args.file.exists() else {}
