@@ -26,6 +26,7 @@
             {% elif film.status == "in_uscita" and card.first_date %}In uscita dal {{ card.first_date | data_lunga(today) }}
             {% elif film.status == "in_uscita" %}In uscita, data da definire
             {% elif film.status == "uscito" and film.left_theaters_date %}Uscito dalle sale il {{ film.left_theaters_date | data_lunga(today) }}
+            {% elif film.status == "uscito" %}Non è arrivato in sala
             {% endif %}
         </p>
         {% include "_vote.html" %}
