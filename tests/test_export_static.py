@@ -52,6 +52,31 @@ def test_build_data(db):
     assert "vote" not in json.dumps(data)  # votes stay on the phone
 
 
+def test_build_data_has_the_film_page_on_each_cinema_site(db):
+    clay, doubt = _seed(db)
+    garden = Cinema(slug="garden", name="Cinema Garden", url="https://garden.example")
+    db.add(garden)
+    db.flush()
+    db.add_all([
+        # The shared site's announcement loses to the cinema's own
+        ComingSoon(film_id=doubt.id, cinema_id=garden.id, source="cosenzacinema", source_url="https://shared/doubt"),
+        ComingSoon(film_id=doubt.id, cinema_id=garden.id, source="garden", source_url="https://garden.example/doubt"),
+        # A show's page wins over an announcement, the latest show's over an earlier one
+        ComingSoon(film_id=clay.id, cinema_id=garden.id, source="garden", source_url="https://garden.example/soon"),
+        Showtime(film_id=clay.id, cinema_id=garden.id, date=TODAY, time=time(18, 0), source_url="https://garden.example/old"),
+        Showtime(film_id=clay.id, cinema_id=garden.id, date=date(2026, 11, 2), time=time(18, 0),
+                 source_url="https://garden.example/clay"),
+    ])
+    db.commit()
+    data = build_data(db, today=TODAY, now=NOW)
+    # The Andromeda announcement of the film in doubt has no page: left out
+    assert data["pages"] == [
+        {"f": clay.id, "c": "andromeda", "u": "https://andromeda.example/film/1"},
+        {"f": clay.id, "c": "garden", "u": "https://garden.example/clay"},
+        {"f": doubt.id, "c": "garden", "u": "https://garden.example/doubt"},
+    ]
+
+
 def test_build_site(db, tmp_path):
     _seed(db)
     data = build_data(db, today=TODAY, now=NOW)

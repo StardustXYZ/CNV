@@ -49,7 +49,7 @@ class FilmPage extends StatelessWidget {
                           const SizedBox(height: 6),
                           FilmMeta(film: current),
                           const SizedBox(height: 6),
-                          Text(_status(current, releases, today), style: const TextStyle(fontSize: 13, color: CnvColors.textMuted)),
+                          Text(statusLine(current, releases, today), style: const TextStyle(fontSize: 13, color: CnvColors.textMuted)),
                           if (current.tmdbId != null)
                             TextButton.icon(
                               style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
@@ -120,6 +120,26 @@ class FilmPage extends StatelessWidget {
                       style: const TextStyle(fontSize: 13, color: CnvColors.textMuted),
                     ),
                   ),
+                if (_sitePages(data, current, releases) case final pages when pages.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  const Text('Sui siti dei cinema', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const Text('La scheda del film sul sito di ogni cinema che lo proietta o lo annuncia.',
+                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final p in pages)
+                        ActionChip(
+                          avatar: const Icon(Icons.language, size: 18),
+                          label: Text(data.cinemasBySlug[p.key]?.name ?? p.key),
+                          tooltip: 'Scheda sul sito',
+                          onPressed: () => openLink(context, p.value),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -145,14 +165,26 @@ class FilmPage extends StatelessWidget {
     return list;
   }
 
-  static String _status(Film film, List<CinemaRelease> releases, String today) {
+  /// Under the title: since when it is in theaters, when it comes out, or when it left.
+  static String statusLine(Film film, List<CinemaRelease> releases, String today) {
     if (film.inSala && film.since != null) return 'In sala dal ${longDate(film.since!, today)}';
     if (film.inUscita) {
       final first = releases.where((r) => r.date != null).map((r) => r.date!).firstOrNull;
       return first != null ? 'In uscita dal ${longDate(first, today)}' : 'In uscita, data da definire';
     }
     if (film.status == 'uscito' && film.left != null) return 'Uscito dalle sale il ${longDate(film.left!, today)}';
+    if (film.status == 'uscito' && film.since == null) return 'Non è arrivato in sala';
     return '';
+  }
+
+  /// cinema -> the film's page on its site: the cinemas with the soonest date first, as above.
+  static List<MapEntry<String, String>> _sitePages(CnvData data, Film film, List<CinemaRelease> releases) {
+    final pages = data.sitePages[film.id] ?? const <String, String>{};
+    final order = [for (final r in releases) r.cinema, for (final c in data.cinemas) c.slug];
+    return [
+      for (final slug in {...order, ...pages.keys})
+        if (pages[slug] case final url?) MapEntry(slug, url),
+    ];
   }
 
   static String _noShows(Film film, CnvData data, String today) {

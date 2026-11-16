@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/film_widgets.dart';
 import '../widgets/vote_buttons.dart';
 import 'film_page.dart';
+import 'in_uscita_page.dart' show ComingCard, comingFilms;
 
 /// Opens a cinema's page (from the menu or by touching its name).
 void openCinema(BuildContext context, String slug, DataStore store) =>
@@ -57,6 +58,7 @@ class _CinemaPageState extends State<CinemaPage> {
         final films = selected == null ? <MapEntry<int, Map<String, List<UpcomingShow>>>>[] : byDay[selected]!.entries.toList();
         DateTime firstStart(Map<String, List<UpcomingShow>> bySala) => sortedSalas(bySala).first.value.first.start;
         films.sort((a, b) => firstStart(a.value).compareTo(firstStart(b.value)));
+        final coming = comingFilms(programme, ''); // only this cinema's shows and announcements
 
         return Scaffold(
           appBar: AppBar(
@@ -161,6 +163,15 @@ class _CinemaPageState extends State<CinemaPage> {
                         ),
                       ),
                 ],
+                if (coming.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text('In arrivo qui', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const Text('I film che questo cinema proietterà o annuncia.',
+                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                  const SizedBox(height: 8),
+                  for (final c in coming)
+                    ComingCard(coming: c, today: programme.day, store: widget.store, showCinemas: false),
+                ],
               ],
             ),
           ),
@@ -200,7 +211,19 @@ class CinemaDrawer extends StatelessWidget {
               for (final c in data.cinemas)
                 ListTile(
                   title: Text(c.name),
-                  trailing: _todayCount(programme!, c.slug),
+                  contentPadding: const EdgeInsets.only(left: 16, right: 4),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ?_todayCount(programme!, c.slug),
+                      if (c.url.isNotEmpty)
+                        IconButton(
+                          tooltip: 'Sito di ${c.name}',
+                          icon: const Icon(Icons.language, color: CnvColors.textMuted),
+                          onPressed: () => openLink(context, c.url),
+                        ),
+                    ],
+                  ),
                   onTap: () {
                     Navigator.of(context).pop(); // close the menu
                     openCinema(context, c.slug, store);

@@ -123,6 +123,7 @@ class CnvData {
     required this.announcements,
     this.merged = const {},
     this.notUpdated = const {},
+    this.sitePages = const {},
   })  : filmsById = {for (final f in films) f.id: f},
         cinemasBySlug = {for (final c in cinemas) c.slug: c};
 
@@ -134,6 +135,7 @@ class CnvData {
   final List<Announcement> announcements;
   final Map<int, int> merged; // duplicate merged by the sync -> the film that absorbed it
   final Map<String, String?> notUpdated; // cinema whose site did not answer -> last good day
+  final Map<int, Map<String, String>> sitePages; // film -> cinema -> the film's page on its site
   final Map<int, Film> filmsById;
   final Map<String, Cinema> cinemasBySlug;
 
@@ -150,5 +152,15 @@ class CnvData {
         notUpdated: {
           for (final e in ((j['not_updated'] as Map<String, dynamic>?) ?? {}).entries) e.key: e.value as String?,
         },
+        sitePages: _sitePages(j['pages'] as List?),
       );
+
+  static Map<int, Map<String, String>> _sitePages(List? pages) {
+    final byFilm = <int, Map<String, String>>{};
+    for (final p in pages ?? const []) {
+      final j = p as Map<String, dynamic>;
+      byFilm.putIfAbsent(j['f'] as int, () => {})[j['c'] as String] = j['u'] as String;
+    }
+    return byFilm;
+  }
 }
