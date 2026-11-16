@@ -43,6 +43,8 @@ class _InSalaPageState extends State<InSalaPage> {
   String? _genre;
   String? _cinema;
   String? _vote; // null: all; '': not voted yet; 'V' / '?'
+  DayPart? _dayPart; // "Quando"
+  bool _originalLanguage = false; // "Solo V.O."
   Timer? _minute;
 
   @override
@@ -64,6 +66,8 @@ class _InSalaPageState extends State<InSalaPage> {
         _genre = null;
         _cinema = null;
         _vote = null;
+        _dayPart = null;
+        _originalLanguage = false;
       });
 
   bool _voteMatches(String? vote) => _vote == null || (_vote!.isEmpty ? vote == null : vote == _vote);
@@ -74,7 +78,8 @@ class _InSalaPageState extends State<InSalaPage> {
     final personal = PersonalScope.of(context);
     final now = widget.store.now;
     final all = Programme.build(data, now);
-    final programme = _cinema == null ? all : Programme.build(data, now, cinema: _cinema);
+    final filter = ShowFilter(dayPart: _dayPart, originalLanguage: _originalLanguage);
+    final programme = _cinema == null && !filter.any ? all : Programme.build(data, now, cinema: _cinema, filter: filter);
     final inSala = [for (final f in data.films) if (f.inSala) f];
     final genres = {for (final f in inSala) ?f.genre}.toList()..sort();
     if (!genres.contains(_genre)) _genre = null;
@@ -88,9 +93,11 @@ class _InSalaPageState extends State<InSalaPage> {
         final bySince = (b.since ?? '').compareTo(a.since ?? ''); // latest arrivals first
         return bySince != 0 ? bySince : a.title.compareTo(b.title);
       });
-    // With a cinema chosen, films not on there are simply left out
-    final gone = _cinema != null ? <Film>[] : ([for (final f in films) if (!all.hasShows(f)) f]..sort((a, b) => a.title.compareTo(b.title)));
-    final filtered = _search.text.trim().isNotEmpty || _genre != null || _cinema != null || _vote != null;
+    // With a cinema or the shows chosen, films without them are simply left out
+    final gone = _cinema != null || filter.any
+        ? <Film>[]
+        : ([for (final f in films) if (!all.hasShows(f)) f]..sort((a, b) => a.title.compareTo(b.title)));
+    final filtered = _search.text.trim().isNotEmpty || _genre != null || _cinema != null || _vote != null || filter.any;
 
     return RefreshIndicator(
       onRefresh: widget.store.refresh,
@@ -132,6 +139,26 @@ class _InSalaPageState extends State<InSalaPage> {
                   options: {for (final c in data.cinemas) c.slug: c.name},
                   onChanged: (v) => setState(() => _cinema = v),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _FilterMenu(
+                  value: _dayPart?.name,
+                  all: 'A qualsiasi ora',
+                  options: {for (final p in DayPart.values) p.name: p.label},
+                  onChanged: (v) => setState(() => _dayPart = v == null ? null : DayPart.values.byName(v)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Solo V.O.'),
+                tooltip: 'Solo gli spettacoli in lingua originale',
+                selected: _originalLanguage,
+                onSelected: (on) => setState(() => _originalLanguage = on),
               ),
             ],
           ),

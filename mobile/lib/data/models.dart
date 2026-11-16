@@ -77,7 +77,16 @@ class Film {
 
 /// One screening, as listed by a cinema's site.
 class Show {
-  const Show({required this.filmId, required this.cinema, required this.day, required this.time, this.sala = '', this.url = ''});
+  const Show({
+    required this.filmId,
+    required this.cinema,
+    required this.day,
+    required this.time,
+    this.sala = '',
+    this.url = '',
+    this.originalLanguage = false,
+    this.age,
+  });
 
   final int filmId;
   final String cinema; // cinema slug
@@ -85,6 +94,8 @@ class Show {
   final String time; // "HH:MM"
   final String sala;
   final String url; // the purchase page, else the film's page on the cinema site
+  final bool originalLanguage; // V.O., usually with Italian subtitles
+  final int? age; // age limit (14, 18) when the cinema gives it
 
   factory Show.fromJson(Map<String, dynamic> j) => Show(
         filmId: j['f'] as int,
@@ -93,6 +104,8 @@ class Show {
         time: j['t'] as String,
         sala: (j['s'] as String?) ?? '',
         url: (j['u'] as String?) ?? '',
+        originalLanguage: j['vo'] == true,
+        age: j['age'] as int?,
       );
 }
 

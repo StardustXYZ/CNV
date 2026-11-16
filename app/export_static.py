@@ -14,6 +14,7 @@ import argparse
 from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
+import re
 import shutil
 
 from sqlalchemy import func
@@ -28,6 +29,22 @@ from app.services.sync import cinemas_not_updated
 PHONE_DIR = ROOT_DIR / "phone"
 STYLE_CSS = ROOT_DIR / "app" / "web" / "static" / "style.css"
 SHOWS_FROM_DAYS_AGO = 1  # yesterday's late shows still belong to last night's programme
+
+# How the cinemas mark a show in the original language ("V.O. SOTT.", "V.O.S.", ...) and its age limit
+_ORIGINAL_LANGUAGE = re.compile(r"\bV\.?\s?O\.?(?:\s?S\.?|\s+SOTT\.?)?(?!\w)|ORIGINALE|SOTTOTITOL|\bSUB\s?ITA\b|\bENG\b", re.I)
+_AGE_LIMIT = re.compile(r"\bV\.?\s?M\.?\s?(\d{1,2})\b|(?<!\d)(\d{1,2})\s?\+")
+
+
+def show_flags(tags: str | None) -> dict:
+    """{"vo": True} for a show in the original language, {"age": 14} with an age limit (only what is set)."""
+    flags: dict = {}
+    for tag in (tags or "").split(","):
+        if _ORIGINAL_LANGUAGE.search(tag):
+            flags["vo"] = True
+        if match := _AGE_LIMIT.search(tag):
+            age = int(match.group(1) or match.group(2))
+            flags["age"] = max(age, flags.get("age", 0))
+    return flags
 
 
 def build_data(db: Session, today: date | None = None, now: datetime | None = None) -> dict:
@@ -45,6 +62,7 @@ def build_data(db: Session, today: date | None = None, now: datetime | None = No
             "t": s.time.strftime("%H:%M"),
             "s": s.sala or "",
             "u": s.booking_url or s.source_url or "",
+            **show_flags(s.tags),
         }
         for s in db.query(Showtime)
         .filter(Showtime.date >= today - timedelta(days=SHOWS_FROM_DAYS_AGO))

@@ -28,11 +28,11 @@ CnvData sample() => CnvData.fromJson({
       ],
       'shows': [
         {'f': 1, 'c': 'andromeda', 'd': '2026-11-14', 't': '18:00', 's': 'Sala 1', 'u': ''}, // started
-        {'f': 1, 'c': 'andromeda', 'd': '2026-11-14', 't': '21:00', 's': 'Sala 1', 'u': 'https://buy/1'},
+        {'f': 1, 'c': 'andromeda', 'd': '2026-11-14', 't': '21:00', 's': 'Sala 1', 'u': 'https://buy/1', 'age': 14},
         {'f': 1, 'c': 'garden', 'd': '2026-11-14', 't': '20:30', 's': 'Sala A', 'u': 'https://buy/2'},
         {'f': 1, 'c': 'garden', 'd': '2026-11-14', 't': '20:30', 's': 'Sala A', 'u': 'https://buy/2'}, // repeated
         {'f': 1, 'c': 'andromeda', 'd': '2026-11-15', 't': '17:00', 's': 'Sala 2', 'u': ''},
-        {'f': 2, 'c': 'garden', 'd': '2026-11-15', 't': '21:15', 's': 'Sala B', 'u': ''},
+        {'f': 2, 'c': 'garden', 'd': '2026-11-15', 't': '21:15', 's': 'Sala B', 'u': '', 'vo': true},
         {'f': 4, 'c': 'andromeda', 'd': '2026-12-16', 't': '20:30', 's': 'Sala 3', 'u': ''},
         {'f': 5, 'c': 'andromeda', 'd': '2026-11-10', 't': '21:00', 's': 'Sala 1', 'u': ''}, // past
       ],
@@ -75,6 +75,27 @@ void main() {
 
     expect(p.nextShows(data.filmsById[2]!)!.day, '2026-11-15'); // Hope: tomorrow
     expect(p.nextShows(data.filmsById[5]!), isNull); // Frankie: nothing left
+  });
+
+  test('the part of the day of a show: after midnight is still the evening', () {
+    expect(DayPart.of(DateTime(2026, 11, 14, 10, 30)), DayPart.beforeSix);
+    expect(DayPart.of(DateTime(2026, 11, 14, 17, 59)), DayPart.beforeSix);
+    expect(DayPart.of(DateTime(2026, 11, 14, 18, 0)), DayPart.sixToNine);
+    expect(DayPart.of(DateTime(2026, 11, 14, 21, 0)), DayPart.afterNine);
+    expect(DayPart.of(DateTime(2026, 11, 15, 0, 30)), DayPart.afterNine);
+  });
+
+  test('shows kept by "Quando" and "Solo V.O.", with their V.O. and age', () {
+    final data = sample();
+    final late = Programme.build(data, now, filter: const ShowFilter(dayPart: DayPart.afterNine));
+    final clay = late.nextShows(data.filmsById[1]!)!;
+    expect(clay.byCinema.keys, ['andromeda']); // the Garden's 20:30 is not after nine
+    expect(clay.byCinema['andromeda']!.values.single.single.age, 14);
+    expect(late.nextShows(data.filmsById[2]!)!.byCinema['garden']!.values.single.single.originalLanguage, isTrue);
+
+    final vo = Programme.build(data, now, filter: const ShowFilter(originalLanguage: true));
+    expect(vo.inSala.map((f) => f.title), ['Hope']);
+    expect(const ShowFilter().any, isFalse);
   });
 
   test('counts and cinemas of In sala and In uscita', () {

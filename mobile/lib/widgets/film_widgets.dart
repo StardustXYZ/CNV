@@ -104,6 +104,16 @@ class ShowTimeChip extends StatelessWidget {
               Text(hhmm(show.start), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               if (show.end != null)
                 Text('→${hhmm(show.end!)}', style: const TextStyle(fontSize: 11, color: CnvColors.textMuted)),
+              if (show.originalLanguage || show.age != null)
+                Text.rich(
+                  TextSpan(children: [
+                    if (show.originalLanguage)
+                      const TextSpan(text: 'V.O.', style: TextStyle(color: CnvColors.accent)),
+                    if (show.originalLanguage && show.age != null) const TextSpan(text: ' '),
+                    if (show.age != null) TextSpan(text: '${show.age}+', style: const TextStyle(color: CnvColors.yellow)),
+                  ]),
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                ),
             ],
           ),
         ),

@@ -80,6 +80,31 @@ void main() {
     expect(find.textContaining('Non più in programmazione'), findsNothing);
   });
 
+  testWidgets('"Quando" and "Solo V.O." keep only those shows, marked under the time', (tester) async {
+    await openApp(tester);
+    expect(find.text('14+'), findsOneWidget); // Clayface at Andromeda, 21:00
+    expect(find.text('V.O.'), findsOneWidget); // Hope tomorrow at the Garden
+
+    await tester.tap(find.text('Solo V.O.'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hope'), findsOneWidget);
+    expect(find.text('Clayface'), findsNothing);
+    expect(find.text('1 film'), findsOneWidget);
+    expect(find.textContaining('Non più in programmazione'), findsNothing);
+    await tester.tap(find.text('Togli filtri'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('A qualsiasi ora'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Prima delle 18').last);
+    await tester.pumpAndSettle();
+    // Clayface tomorrow at 17:00, Hope only at 21:15: left out
+    expect(find.text('Clayface'), findsOneWidget);
+    expect(find.text('17:00'), findsOneWidget);
+    expect(find.text('21:00'), findsNothing);
+    expect(find.text('Hope'), findsNothing);
+  });
+
   testWidgets('the film page: every show by cinema and day', (tester) async {
     await openApp(tester);
 

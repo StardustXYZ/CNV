@@ -6,7 +6,9 @@ from datetime import date, datetime, time, timezone
 import json
 
 from app.db.models import Cinema, ComingSoon, Film, FilmMerge, Showtime
-from app.export_static import build_data, build_site
+import pytest
+
+from app.export_static import build_data, build_site, show_flags
 
 TODAY = date(2026, 10, 30)
 NOW = datetime(2026, 10, 30, 11, 0, tzinfo=timezone.utc)
@@ -85,6 +87,36 @@ def test_build_data_has_plot_and_credits_only_for_the_confirmed_match(db):
     films = {f["id"]: f for f in build_data(db, today=TODAY, now=NOW)["films"]}
     assert (films[clay.id]["plot"], films[clay.id]["director"], films[clay.id]["cast"]) == ("Trama", "Ada Rossi", "Uno, Due")
     assert films[doubt.id]["plot"] is None and films[doubt.id]["cast"] is None
+
+
+@pytest.mark.parametrize(
+    ("tags", "flags"),
+    [
+        ("V.O. SOTT.", {"vo": True}),
+        ("V.O. SOTT.,PRIMA VISIONE", {"vo": True}),
+        ("EVENT0 10,V.O.S.,EVENTO 10", {"vo": True}),
+        ("Versione originale sottotitolata", {"vo": True}),
+        ("14+", {"age": 14}),
+        ("14+,EVENTO 8", {"age": 14}),
+        ("V.M.18", {"age": 18}),
+        ("VM 14", {"age": 14}),
+        ("18+,V.O.", {"vo": True, "age": 18}),
+        ("EVENTO € 8.00", {}),
+        ("PRIMA VISIONE", {}),
+        ("VOLUME 2", {}),
+        (None, {}),
+    ],
+)
+def test_show_flags(tags, flags):
+    assert show_flags(tags) == flags
+
+
+def test_build_data_marks_original_language_and_age_on_each_show(db):
+    clay, _ = _seed(db)
+    db.query(Showtime).filter_by(film_id=clay.id, date=TODAY).one().tags = "V.O. SOTT.,14+"
+    db.commit()
+    show = build_data(db, today=TODAY, now=NOW)["shows"][0]
+    assert (show["vo"], show["age"]) == (True, 14)
 
 
 def test_build_site(db, tmp_path):
