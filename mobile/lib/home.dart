@@ -51,7 +51,7 @@ const cnvPages = [
     'Voti',
     Icons.how_to_vote_outlined,
     Icons.how_to_vote,
-    'I tuoi voti, la loro copia, e più avanti accesso e notifiche.',
+    'I tuoi voti, la loro copia, l’account e le notifiche.',
   ),
 ];
 

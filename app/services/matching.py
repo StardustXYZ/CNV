@@ -404,7 +404,6 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
         survivor.left_theaters_date = None
     if other.status == "in_sala" and survivor.status != "in_sala":
         survivor.status = "in_sala"
-        survivor.in_theaters = True
 
     # Remember the merge, also for films merged earlier into ``other``: the phone moves
     # votes given to a deleted copy onto the survivor

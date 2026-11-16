@@ -91,8 +91,8 @@ class AccountSection extends StatelessWidget {
     if (!account.available) {
       text("L'accesso non è disponibile su questo telefono. CNV funziona lo stesso.");
     } else if (user == null) {
-      text("Con l'account i tuoi voti si salvano anche online e li ritrovi su un altro telefono; più avanti "
-          'arriveranno anche le notifiche. CNV funziona anche senza. L’account è solo su invito: se non sei nella '
+      text("Con l'account i tuoi voti si salvano anche online e li ritrovi su un altro telefono, e puoi "
+          'ricevere le notifiche dei film nuovi in sala. CNV funziona anche senza. L’account è solo su invito: se non sei nella '
           'lista, chiedi di aggiungerti.');
       children.addAll([
         FilledButton.icon(

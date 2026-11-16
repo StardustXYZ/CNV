@@ -15,7 +15,6 @@ const VOTE_PRIORITY = { "S": 3, "V": 2, "?": 1 }; // two merged copies keep the 
 const LATE_SHOW_CUTOFF = "06:00"; // shows listed before this hour run after midnight
 const STALE_AFTER_HOURS = 30;
 const POSTER_CACHE = "cnv-posters"; // same name as in sw.js
-const DATA_CACHE = "cnv-data";       // same name as in sw.js
 
 let DATA = null;
 let FILMS = new Map();
@@ -37,16 +36,6 @@ function load(key, fallback) {
 }
 function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: not saved */ }
-}
-/** The notifications moved to the Android app: the subscription of this browser and the copy
- * of the votes kept for them are no longer needed. */
-function forgetWebPush() {
-    if ("caches" in window) caches.open(DATA_CACHE).then((cache) => cache.delete("votes.json")).catch(() => {});
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.ready
-        .then((registration) => registration.pushManager && registration.pushManager.getSubscription())
-        .then((subscription) => subscription && subscription.unsubscribe())
-        .catch(() => { /* nothing to remove */ });
 }
 /** Only V and ?: the old X ("non mi interessa") is dropped and the film goes back to "da votare". */
 function knownVotes(map) {
@@ -971,7 +960,6 @@ function start(data, offline) {
     render();
     showUpdated(offline);
     if (!offline) prunePosters();
-    forgetWebPush();
 }
 
 fetch("data.json", { cache: "no-cache" })

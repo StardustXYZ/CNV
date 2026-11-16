@@ -66,8 +66,8 @@ async def test_scenario_prevendita_che_diventa_in_sala(db):
     film = db.query(Film).first()
     assert film.raw_title == "AVENGERS: DOOMSDAY"
     assert film.status == "in_uscita"
-    assert film.stato_programmazione == "in_uscita"
-    assert film.data_uscita_dalle_sale is None
+    assert film.status == "in_uscita"
+    assert film.left_theaters_date is None
 
     # Day 60: 16 December 2026. Showtime is today.
     dec_shows = [
@@ -89,8 +89,7 @@ async def test_scenario_prevendita_che_diventa_in_sala(db):
 
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.stato_programmazione == "in_sala"
-    assert film.in_theaters is True
+    assert film.status == "in_sala"
 
     # Verify state transition was logged
     changes = [c for c in res_dec.status_changes if c.film_id == film.id]
@@ -122,22 +121,22 @@ async def test_scenario_sparizione_breve_tolleranza_buchi(db):
 
     film = db.query(Film).first()
     assert film.status == "in_sala"
-    assert film.consecutive_missing_syncs == 0
+    assert film.consecutive_missing_days == 0
 
     # Day 2 (19/10): Missing for 1 day, cinema is open with other films
     other_day2 = [ShowtimeData(cinema="andromeda", raw_title="Altro Film", date=date(2026, 10, 19), time=time(18, 0))]
     await run_sync(db, as_of_date=date(2026, 10, 19), cinemas=cinemas, scraper_results={"andromeda": other_day2})
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.consecutive_missing_syncs == 1
+    assert film.consecutive_missing_days == 1
 
     # Day 3 (20/10): Missing for 2 days
     other_day3 = [ShowtimeData(cinema="andromeda", raw_title="Altro Film", date=date(2026, 10, 20), time=time(18, 0))]
     await run_sync(db, as_of_date=date(2026, 10, 20), cinemas=cinemas, scraper_results={"andromeda": other_day3})
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.consecutive_missing_syncs == 2
-    assert film.data_uscita_dalle_sale is None
+    assert film.consecutive_missing_days == 2
+    assert film.left_theaters_date is None
 
     # Day 4 (21/10): Reappears!
     day4_shows = [
@@ -153,15 +152,15 @@ async def test_scenario_sparizione_breve_tolleranza_buchi(db):
     await run_sync(db, as_of_date=date(2026, 10, 21), cinemas=cinemas, scraper_results={"andromeda": day4_shows})
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.consecutive_missing_syncs == 0
-    assert film.data_uscita_dalle_sale is None
+    assert film.consecutive_missing_days == 0
+    assert film.left_theaters_date is None
 
 
 @pytest.mark.asyncio
 async def test_scenario_sparizione_definitiva_7_giorni(db):
     """Scenario 3: Film disappears for 7 consecutive days (default threshold).
 
-    It transitions to 'uscito' and records data_uscita_dalle_sale.
+    It transitions to 'uscito' and records left_theaters_date.
     """
     cinemas = [
         CinemaConfig(slug="andromeda", name="Andromeda River", url="https://example.com", scraper="stub"),
@@ -192,7 +191,7 @@ async def test_scenario_sparizione_definitiva_7_giorni(db):
         await run_sync(db, as_of_date=current_d, cinemas=cinemas, scraper_results={"andromeda": other_shows})
         db.refresh(film)
         assert film.status == "in_sala"
-        assert film.consecutive_missing_syncs == day_num - 1
+        assert film.consecutive_missing_days == day_num - 1
 
     # Day 8: 7 consecutive missing syncs reached (threshold N=7)!
     day8 = date(2026, 10, 8)
@@ -200,9 +199,8 @@ async def test_scenario_sparizione_definitiva_7_giorni(db):
     res = await run_sync(db, as_of_date=day8, cinemas=cinemas, scraper_results={"andromeda": other_day8})
     db.refresh(film)
     assert film.status == "uscito"
-    assert film.in_theaters is False
     # Left on the day of its last screening (the later ones were removed from the site)
-    assert film.data_uscita_dalle_sale == date(2026, 10, 1)
+    assert film.left_theaters_date == date(2026, 10, 1)
 
     changes = [c for c in res.status_changes if c.film_id == film.id]
     assert any(c.new_status == "uscito" for c in changes)
@@ -239,14 +237,14 @@ async def test_scenario_evento_3_giorni(db):
     await run_sync(db, as_of_date=date(2026, 10, 2), cinemas=cinemas, scraper_results={"andromeda": other_day2})
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.consecutive_missing_syncs == 1
+    assert film.consecutive_missing_days == 1
 
     # Day 3: Missing day 2
     other_day3 = [ShowtimeData(cinema="andromeda", raw_title="Altro Film", date=date(2026, 10, 3), time=time(18, 0))]
     await run_sync(db, as_of_date=date(2026, 10, 3), cinemas=cinemas, scraper_results={"andromeda": other_day3})
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.consecutive_missing_syncs == 2
+    assert film.consecutive_missing_days == 2
 
     # Day 4: Missing day 3 -> threshold N=3 reached for event!
     day4 = date(2026, 10, 4)
@@ -254,7 +252,7 @@ async def test_scenario_evento_3_giorni(db):
     await run_sync(db, as_of_date=day4, cinemas=cinemas, scraper_results={"andromeda": other_day4})
     db.refresh(film)
     assert film.status == "uscito"
-    assert film.data_uscita_dalle_sale == date(2026, 10, 1)  # day of its last screening
+    assert film.left_theaters_date == date(2026, 10, 1)  # day of its last screening
 
 
 
@@ -323,7 +321,7 @@ async def test_scenario_scraper_rotto_non_considera_spariti(db):
     db.refresh(film_zustissia)
     # The film must NOT have its missing counter incremented, must remain in_sala
     assert film_zustissia.status == "in_sala"
-    assert film_zustissia.consecutive_missing_syncs == 0
+    assert film_zustissia.consecutive_missing_days == 0
     assert "citrigno" in res_day2.errors
 
     # Verify audit SyncRun table logged the failure
@@ -337,7 +335,7 @@ async def test_scenario_scraper_rotto_non_considera_spariti(db):
 async def test_scenario_ricomparsa_dopo_uscito_azzera_data(db):
     """Scenario 6: Film marked 'uscito' returns to theaters.
 
-    Transitions back to 'in_sala' and resets data_uscita_dalle_sale to None.
+    Transitions back to 'in_sala' and resets left_theaters_date to None.
     """
     cinemas = [
         CinemaConfig(slug="garden", name="Cinema Garden", url="https://example.com", scraper="garden"),
@@ -348,9 +346,8 @@ async def test_scenario_ricomparsa_dopo_uscito_azzera_data(db):
         raw_title="Cinecittà",
         normalized_title="cinecitta",
         status="uscito",
-        in_theaters=False,
         left_theaters_date=date(2026, 9, 30),
-        consecutive_missing_syncs=10,
+        consecutive_missing_days=10,
     )
     db.add(film)
     db.commit()
@@ -376,10 +373,9 @@ async def test_scenario_ricomparsa_dopo_uscito_azzera_data(db):
 
     db.refresh(film)
     assert film.status == "in_sala"
-    assert film.in_theaters is True
-    assert film.data_uscita_dalle_sale is None
     assert film.left_theaters_date is None
-    assert film.consecutive_missing_syncs == 0
+    assert film.left_theaters_date is None
+    assert film.consecutive_missing_days == 0
 
     reappeared_changes = [c for c in res.status_changes if c.change_type == "reappeared"]
     assert len(reappeared_changes) == 1
@@ -489,7 +485,7 @@ async def test_scenario_avengers_scarta_spettacoli_precedenti_release_from(db):
 
     # Film is strictly in the future compared to 18/10 -> in_uscita!
     assert film.status == "in_uscita"
-    assert film.stato_programmazione == "in_uscita"
+    assert film.status == "in_uscita"
 
 
 @pytest.mark.asyncio

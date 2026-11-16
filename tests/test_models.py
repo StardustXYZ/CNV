@@ -11,7 +11,6 @@ def test_create_film(db):
     film = Film(
         raw_title="Test Film",
         normalized_title="test film",
-        in_theaters=True,
         first_seen=datetime.now(timezone.utc),
         last_seen=datetime.now(timezone.utc),
     )
@@ -20,7 +19,6 @@ def test_create_film(db):
 
     assert film.id is not None
     assert film.vote is None
-    assert film.in_theaters is True
 
 
 def test_create_cinema_and_showtime(db):
@@ -28,7 +26,6 @@ def test_create_cinema_and_showtime(db):
     film = Film(
         raw_title="Test",
         normalized_title="test",
-        in_theaters=True,
         first_seen=datetime.now(timezone.utc),
         last_seen=datetime.now(timezone.utc),
     )
@@ -55,7 +52,6 @@ def test_film_vote_values(db):
     film = Film(
         raw_title="Vote Test",
         normalized_title="vote test",
-        in_theaters=True,
         first_seen=datetime.now(timezone.utc),
         last_seen=datetime.now(timezone.utc),
     )
@@ -69,39 +65,11 @@ def test_film_vote_values(db):
         assert film.vote == v
 
 
-def test_film_italian_aliases(db):
-    film = Film(
-        titolo="Il Padrino",
-        normalized_title="il padrino",
-        anno=1972,
-        stato_utente="V",
-        stato_programmazione="in_sala",
-        data_uscita_dalle_sale=date(2026, 10, 15),
-        esportato_letterboxd=True,
-    )
-    db.add(film)
-    db.commit()
-    db.refresh(film)
-
-    assert film.raw_title == "Il Padrino"
-    assert film.titolo == "Il Padrino"
-    assert film.year == 1972
-    assert film.anno == 1972
-    assert film.vote == "V"
-    assert film.stato_utente == "V"
-    assert film.status == "in_sala"
-    assert film.stato_programmazione == "in_sala"
-    assert film.left_theaters_date == date(2026, 10, 15)
-    assert film.data_uscita_dalle_sale == date(2026, 10, 15)
-    assert film.letterboxd_exported is True
-    assert film.esportato_letterboxd is True
-
-
 def test_daily_snapshot_and_sync_run(db):
     from app.db.models import DailySnapshot, SyncRun
 
     cinema = Cinema(slug="garden", name="Cinema Garden", url="https://example.com")
-    film = Film(titolo="Dune", normalized_title="dune")
+    film = Film(raw_title="Dune", normalized_title="dune")
     db.add_all([cinema, film])
     db.flush()
 

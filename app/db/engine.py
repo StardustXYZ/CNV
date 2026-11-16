@@ -82,6 +82,10 @@ def init_db() -> None:
                         "(SELECT MAX(DATE(c.last_seen)) FROM coming_soon c WHERE c.film_id = films.id)"
                     )
                 )
+            if "in_theaters" in columns:
+                # Written and never read: "status" says it all. It must leave the table too,
+                # because it is NOT NULL and new films no longer set it
+                conn.execute(text("ALTER TABLE films DROP COLUMN in_theaters"))
             # The X vote ("non mi interessa") no longer exists: those films go back to "da votare"
             conn.execute(text("UPDATE films SET vote = NULL WHERE vote = 'X'"))
 

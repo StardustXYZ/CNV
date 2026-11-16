@@ -12,7 +12,7 @@ flutter build apk --release --target-platform android-arm64
 
 L'APK esce in `build/app/outputs/flutter-apk/app-release.apk`. Si copia nella cartella `apk/` del progetto, che git ignora, e si installa sul telefono a mano.
 
-Per ora l'APK è firmato con la chiave di prova del PC (`~/.android/debug.keystore`), la cui impronta è registrata su Firebase. La chiave definitiva per gli amici arriva più avanti.
+L'APK è firmato con la chiave di CNV, letta da `android/key.properties` (vedi `android/key.properties.example`); senza quel file viene firmato con la chiave di prova del PC e non si installa sopra le versioni pubblicate. Le impronte delle due chiavi sono registrate su Firebase.
 
 ## Prove e controlli
 

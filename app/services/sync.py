@@ -177,7 +177,6 @@ def _get_or_create_film(db: Session, raw_title: str, today: date | None = None) 
             raw_title=cleaned or raw_title,
             normalized_title=norm,
             status="in_uscita",
-            in_theaters=True,
             first_seen=now,
             last_seen=now,
             last_seen_date=today,
@@ -273,7 +272,6 @@ def _apply_coming_soon(
                     raw_title=cleaned,
                     normalized_title=norm,
                     status="in_uscita",
-                    in_theaters=True,
                     first_seen=now,
                     last_seen=now,
                     consecutive_missing_days=0,
@@ -699,7 +697,6 @@ async def run_sync(
             # Reappeared after being marked uscito
             film.status = "in_sala"
             film.left_theaters_date = None
-            film.in_theaters = True
             status_changes.append(
                 SyncChange(
                     film_id=film.id,
@@ -712,7 +709,6 @@ async def run_sync(
             )
         elif target_status == "uscito":
             film.status = "uscito"
-            film.in_theaters = False
             if film.left_theaters_date is None and all_dates:
                 # The day of its last screening, not the day CNV noticed (a week later).
                 # Never screened: no such day, it never arrived in theaters
@@ -735,7 +731,6 @@ async def run_sync(
                 )
         elif target_status == "in_sala":
             film.status = "in_sala"
-            film.in_theaters = True
             if old_status != "in_sala":
                 status_changes.append(
                     SyncChange(
@@ -749,7 +744,6 @@ async def run_sync(
                 )
         elif target_status == "in_uscita":
             film.status = "in_uscita"
-            film.in_theaters = True
             film.left_theaters_date = None
             if old_status != "in_uscita":
                 status_changes.append(
