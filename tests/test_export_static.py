@@ -77,6 +77,16 @@ def test_build_data_has_the_film_page_on_each_cinema_site(db):
     ]
 
 
+def test_build_data_has_plot_and_credits_only_for_the_confirmed_match(db):
+    clay, doubt = _seed(db)
+    for f in (clay, doubt):
+        f.overview, f.director, f.cast_names, f.credits_tmdb_id = "Trama", "Ada Rossi", "Uno, Due", f.tmdb_id
+    db.commit()
+    films = {f["id"]: f for f in build_data(db, today=TODAY, now=NOW)["films"]}
+    assert (films[clay.id]["plot"], films[clay.id]["director"], films[clay.id]["cast"]) == ("Trama", "Ada Rossi", "Uno, Due")
+    assert films[doubt.id]["plot"] is None and films[doubt.id]["cast"] is None
+
+
 def test_build_site(db, tmp_path):
     _seed(db)
     data = build_data(db, today=TODAY, now=NOW)

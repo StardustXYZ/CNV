@@ -95,6 +95,24 @@ void main() {
     expect(find.text('Domani'), findsOneWidget);
     expect(find.text('17:00'), findsOneWidget);
 
+    // No plot or credits from TMDB: nothing shown
+    expect(find.textContaining('Regia', findRichText: true), findsNothing);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hope'));
+    await tester.pumpAndSettle();
+    expect(find.text('Regia: Ada Rossi', findRichText: true), findsOneWidget);
+    expect(find.text('Con: Uno Primo, Due Secondo', findRichText: true), findsOneWidget);
+    expect(find.textContaining('In un villaggio sperduto'), findsOneWidget);
+    // A long plot: a few lines, then all of it
+    final plot = find.textContaining('In un villaggio sperduto');
+    expect(tester.widget<Text>(plot).maxLines, 4);
+    await tester.tap(find.text('Altro'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(plot).maxLines, isNull);
+    expect(find.text('Meno'), findsOneWidget);
+
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Non più in programmazione (1)'), 300, scrollable: pageList());

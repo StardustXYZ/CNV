@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -62,6 +62,11 @@ class Film(Base):
     runtime: Mapped[int | None] = mapped_column(Integer, nullable=True)  # minutes, from the TMDB details
     genre: Mapped[str | None] = mapped_column(String(50), nullable=True)  # main genre, from the TMDB details
     details_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # TMDB film runtime/genre belong to
+    # Plot, director(s) and main cast from TMDB ("A, B"), and the TMDB film they belong to
+    overview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    director: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cast_names: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    credits_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # The "now in sala" notice for a V film was seen (or the vote was given while in sala)
     in_sala_noticed: Mapped[bool] = mapped_column(Boolean, default=False)
     # The phone was notified that it arrived in theaters (app/push.py)
@@ -85,6 +90,11 @@ class Film(Base):
     def has_tmdb_details(self) -> bool:
         """Runtime and genre are known and belong to the confirmed TMDB match."""
         return self.is_tmdb_confirmed and self.details_tmdb_id == self.tmdb_id
+
+    @property
+    def has_tmdb_credits(self) -> bool:
+        """Plot, director and cast are known and belong to the confirmed TMDB match."""
+        return self.is_tmdb_confirmed and self.credits_tmdb_id == self.tmdb_id
 
     def __init__(self, **kwargs):
         # Support Italian aliases in constructor

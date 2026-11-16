@@ -12,6 +12,7 @@ from app.config import settings
 
 TMDB_API_URL = "https://api.themoviedb.org/3"
 TMDB_POSTER_URL = "https://image.tmdb.org/t/p/w342"
+CAST_SIZE = 5  # main actors kept, in the order of the credits
 
 
 @dataclass
@@ -27,6 +28,9 @@ class TmdbMovie:
     runtime: int | None = None  # minutes; only in the movie details, not in search results
     genres: tuple[str, ...] = ()  # Italian names, main genre first; only in the movie details
     has_details: bool = False  # built from the movie details (runtime and genres are known)
+    overview: str = ""  # plot, in Italian when TMDB has it, else in English; only in the details
+    directors: tuple[str, ...] = ()  # only in the details with credits
+    cast: tuple[str, ...] = ()  # main actors, only in the details with credits
 
     @property
     def main_genre(self) -> str | None:
@@ -58,7 +62,20 @@ class TmdbMovie:
             runtime=int(hit["runtime"]) if hit.get("runtime") else None,
             genres=tuple(g["name"] for g in hit.get("genres") or [] if g.get("name")),
             has_details="genres" in hit,
+            overview=(hit.get("overview") or "").strip(),
+            directors=_directors(hit.get("credits") or {}),
+            cast=_cast(hit.get("credits") or {}),
         )
+
+
+def _directors(credits: dict) -> tuple[str, ...]:
+    names = [c.get("name") for c in credits.get("crew") or [] if c.get("job") == "Director"]
+    return tuple(dict.fromkeys(n for n in names if n))  # once each, in TMDB's order
+
+
+def _cast(credits: dict) -> tuple[str, ...]:
+    actors = sorted(credits.get("cast") or [], key=lambda c: c.get("order", 999))
+    return tuple(dict.fromkeys(c["name"] for c in actors if c.get("name")))[:CAST_SIZE]
 
 
 class MovieSearcher(Protocol):
@@ -107,9 +124,18 @@ class TmdbClient:
         return [TmdbMovie.from_api(hit) for hit in resp.json().get("results", [])]
 
     async def get_movie(self, tmdb_id: int) -> TmdbMovie | None:
-        """Fetch one movie by TMDB id, with runtime and genres (None if it does not exist)."""
-        resp = await self._client.get(f"/movie/{tmdb_id}", params={"api_key": self.api_key, "language": "it-IT"})
+        """Fetch one movie by TMDB id with its details and credits (None if it does not exist).
+
+        Without an Italian plot, the English one is asked for.
+        """
+        params = {"api_key": self.api_key, "language": "it-IT", "append_to_response": "credits"}
+        resp = await self._client.get(f"/movie/{tmdb_id}", params=params)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
-        return TmdbMovie.from_api(resp.json())
+        movie = TmdbMovie.from_api(resp.json())
+        if not movie.overview:
+            english = await self._client.get(f"/movie/{tmdb_id}", params={"api_key": self.api_key, "language": "en-US"})
+            if english.is_success:
+                movie.overview = (english.json().get("overview") or "").strip()
+        return movie

@@ -65,6 +65,14 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN seen_cinema_id INTEGER REFERENCES cinemas(id)"))
             if "diary_exported" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN diary_exported BOOLEAN DEFAULT 0"))
+            for name, kind in (
+                ("overview", "TEXT"),
+                ("director", "VARCHAR(300)"),
+                ("cast_names", "VARCHAR(500)"),
+                ("credits_tmdb_id", "INTEGER"),
+            ):
+                if name not in columns:
+                    conn.execute(text(f"ALTER TABLE films ADD COLUMN {name} {kind}"))
             if "last_announced_date" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN last_announced_date DATE"))
                 # Films announced now: the last time their announcement was read
