@@ -96,7 +96,7 @@ Toccando un orario si apre la pagina d'acquisto di quello spettacolo sul sito de
 |---|---|
 | **In uscita** | Ha solo spettacoli futuri (prevendita) oppure è annunciato da un cinema |
 | **In sala** | Ha spettacoli oggi o nei giorni passati e compare ancora sui siti dei cinema |
-| **Uscito** | Non compare in nessun cinema da almeno 7 giorni (3 per gli eventi). La data di uscita dalle sale è quella del suo ultimo spettacolo. Se un cinema lo annuncia di nuovo resta "In uscita"; se ricompare in programmazione torna "In sala" |
+| **Uscito** | Non compare in nessun cinema da almeno 7 giorni (3 per gli eventi). La data di uscita dalle sale è quella del suo ultimo spettacolo. Anche un film annunciato che nessun cinema ha poi proiettato diventa "uscito", 7 giorni dopo l'ultimo annuncio, senza data ("Non è arrivato in sala"): se l'avevi segnato V o ? finisce in Watchlist come gli altri. Se un cinema lo annuncia di nuovo resta "In uscita"; se ricompare in programmazione torna "In sala" |
 
 Un film è un "evento" solo se lo sono tutti i suoi spettacoli attuali: un'anteprima prima della programmazione normale non basta.
 

@@ -54,6 +54,8 @@ class Film(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     last_seen_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Last day a cinema announced it (prossimamente): a film never screened leaves when this gets old
+    last_announced_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     exported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_event: Mapped[bool] = mapped_column(Boolean, default=False)
     consecutive_missing_days: Mapped[int] = mapped_column(Integer, default=0)

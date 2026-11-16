@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -189,6 +189,70 @@ async def test_announced_film_is_never_marked_uscito(db):
     assert film.status == "in_uscita"
     assert film.left_theaters_date is None
     assert any("annunciato di nuovo" in c.details for c in res.status_changes if c.film_id == film.id)
+
+
+@pytest.mark.asyncio
+async def test_film_no_cinema_took_leaves_after_the_threshold(db):
+    batch = ComingSoonBatch("citrigno", [item("ICE CREAM MAN")], cinema_slug="citrigno")
+    await sync(db, coming=[batch])
+    film = db.query(Film).one()
+    film.vote = "V"
+    assert film.last_announced_date == TODAY
+
+    # Still announced ten days later: it is coming, whatever the wait
+    await sync(db, day=TODAY + timedelta(days=10), coming=[batch])
+    db.refresh(film)
+    assert film.status == "in_uscita"
+    assert film.last_announced_date == TODAY + timedelta(days=10)
+
+    # The page drops it and no cinema screens it: still "in uscita" for a few days...
+    empty = ComingSoonBatch("citrigno", [], cinema_slug="citrigno")
+    await sync(db, day=TODAY + timedelta(days=16), coming=[empty])
+    db.refresh(film)
+    assert film.status == "in_uscita"
+
+    # ...then it leaves like the others, with no exit day: it never arrived
+    res = await sync(db, day=TODAY + timedelta(days=17), coming=[empty])
+    db.refresh(film)
+    assert film.status == "uscito"
+    assert film.left_theaters_date is None
+    assert film.vote == "V"
+    assert any("Mai arrivato in sala" in c.details for c in res.status_changes if c.film_id == film.id)
+
+    # Announced again: coming back
+    await sync(db, day=TODAY + timedelta(days=30), coming=[batch])
+    db.refresh(film)
+    assert film.status == "in_uscita"
+
+
+@pytest.mark.asyncio
+async def test_film_no_cinema_took_arrives_late_and_is_news(db):
+    batch = ComingSoonBatch("citrigno", [item("ICE CREAM MAN")], cinema_slug="citrigno")
+    await sync(db, coming=[batch])
+    film = db.query(Film).one()
+    await sync(db, day=TODAY + timedelta(days=8), coming=[ComingSoonBatch("citrigno", [], cinema_slug="citrigno")])
+    db.refresh(film)
+    assert film.status == "uscito"
+
+    later = TODAY + timedelta(days=20)
+    shows = {"citrigno": [ShowtimeData("citrigno", "ICE CREAM MAN", later, time(21, 0))]}
+    await sync(db, day=later, shows=shows)
+    db.refresh(film)
+    assert film.status == "in_sala"
+    assert film.in_sala_pushed is False  # the phone is told it arrived
+
+
+@pytest.mark.asyncio
+async def test_film_never_announced_since_the_update_counts_from_its_last_news(db):
+    # Films from before last_announced_date existed: the day CNV last read about them
+    film = Film(raw_title="MINOTAUR", normalized_title="minotaur", status="in_uscita",
+                first_seen=datetime(2026, 9, 1), last_seen=datetime(2026, 9, 1), vote="?")
+    db.add(film)
+    db.commit()
+    await sync(db)
+    db.refresh(film)
+    assert film.status == "uscito"
+    assert film.left_theaters_date is None
 
 
 class FakeTmdb:

@@ -376,6 +376,9 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     survivor.last_seen = _latest(survivor.last_seen, other.last_seen)
     if other.last_seen_date and (survivor.last_seen_date is None or other.last_seen_date > survivor.last_seen_date):
         survivor.last_seen_date = other.last_seen_date
+    survivor.last_announced_date = max(
+        (d for d in (survivor.last_announced_date, other.last_announced_date) if d), default=None
+    )
     # Only an event if both copies were events: a regular run must not get the short threshold
     survivor.is_event = survivor.is_event and other.is_event
     survivor.letterboxd_exported = survivor.letterboxd_exported or other.letterboxd_exported

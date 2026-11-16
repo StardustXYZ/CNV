@@ -297,6 +297,7 @@ def _apply_coming_soon(
             entry.tags = ", ".join(item.tags)[:200] or None
             entry.source_url = item.source_url or ""
             entry.last_seen = now
+            film.last_announced_date = today
             db.flush()
             kept.add(entry.id)
 
@@ -669,7 +670,16 @@ async def run_sync(
         future_dates = [d for d in all_dates if d > today]
         shown_recently = any(today - timedelta(days=threshold) <= d <= today for d in all_dates)
 
-        if not all_dates or (future_dates and not shown_recently):
+        never_announced_for = 0
+        if not all_dates and film.id not in announced_film_ids:
+            # Announced but never screened, and no cinema announces it any more: when that
+            # lasts as long as the usual threshold, no cinema took it and it leaves too
+            last_news = film.last_announced_date or (film.last_seen or film.first_seen or now).date()
+            never_announced_for = max(0, (today - last_news).days)
+
+        if not all_dates and never_announced_for >= threshold:
+            target_status = "uscito"
+        elif not all_dates or (future_dates and not shown_recently):
             # Only future shows: presale, or back in programme after a while
             target_status = "in_uscita"
         elif film.consecutive_missing_days >= threshold:
@@ -703,8 +713,9 @@ async def run_sync(
         elif target_status == "uscito":
             film.status = "uscito"
             film.in_theaters = False
-            if film.left_theaters_date is None:
-                # The day of its last screening, not the day CNV noticed (a week later)
+            if film.left_theaters_date is None and all_dates:
+                # The day of its last screening, not the day CNV noticed (a week later).
+                # Never screened: no such day, it never arrived in theaters
                 past_dates = [d for d in all_dates if d <= today]
                 film.left_theaters_date = max(past_dates, default=film.last_seen_date or today)
             if old_status != "uscito":
@@ -715,7 +726,11 @@ async def run_sync(
                         change_type="status_change",
                         old_status=old_status,
                         new_status="uscito",
-                        details=f"Non presente da {film.consecutive_missing_days} giorni (soglia={threshold})",
+                        details=(
+                            f"Non presente da {film.consecutive_missing_days} giorni (soglia={threshold})"
+                            if all_dates
+                            else f"Mai arrivato in sala, non più annunciato da {never_announced_for} giorni"
+                        ),
                     )
                 )
         elif target_status == "in_sala":

@@ -65,6 +65,15 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN seen_cinema_id INTEGER REFERENCES cinemas(id)"))
             if "diary_exported" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN diary_exported BOOLEAN DEFAULT 0"))
+            if "last_announced_date" not in columns:
+                conn.execute(text("ALTER TABLE films ADD COLUMN last_announced_date DATE"))
+                # Films announced now: the last time their announcement was read
+                conn.execute(
+                    text(
+                        "UPDATE films SET last_announced_date = "
+                        "(SELECT MAX(DATE(c.last_seen)) FROM coming_soon c WHERE c.film_id = films.id)"
+                    )
+                )
             # The X vote ("non mi interessa") no longer exists: those films go back to "da votare"
             conn.execute(text("UPDATE films SET vote = NULL WHERE vote = 'X'"))
 
