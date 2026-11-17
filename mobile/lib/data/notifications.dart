@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 import 'account.dart';
+import 'storage.dart';
 
 /// Which notifications the account wants: every film new in theaters, only its V ones, none.
 const notifyModes = ['all', 'v', 'off'];
@@ -140,15 +139,13 @@ class NotificationStore extends ChangeNotifier {
 
   /// A random name for this installation of the app, kept on the phone.
   static Future<String> _savedPhoneId() async {
-    final file = File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}telefono.txt');
-    if (await file.exists()) {
-      final id = (await file.readAsString()).trim();
-      if (RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(id)) return id;
-    }
+    final storage = deviceStorage();
+    final saved = (await storage.read('telefono.txt'))?.trim();
+    if (saved != null && RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(saved)) return saved;
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = Random.secure();
     final id = List.generate(22, (_) => chars[random.nextInt(chars.length)]).join();
-    await file.writeAsString(id, flush: true);
+    await storage.write('telefono.txt', id);
     return id;
   }
 

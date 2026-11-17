@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../data/device_words.dart';
 import '../theme.dart';
 
 /// "Privacy": what CNV keeps, where, who sees it, and how to delete it. In plain words.
@@ -9,7 +11,7 @@ class PrivacyPage extends StatelessWidget {
   static const _sections = [
     (
       'Senza account',
-      'I voti, i film visti e quello che hai portato su Letterboxd restano solo su questo telefono. '
+      'I voti, i film visti e quello che hai portato su Letterboxd restano solo $onThisDevice. '
           'CNV scarica i programmi dei cinema e le locandine (da TMDB), ma non manda niente di tuo.'
     ),
     (
@@ -39,9 +41,11 @@ class PrivacyPage extends StatelessWidget {
     (
       'Cancellare i dati',
       'Nella pagina Voti, con l’account aperto, “Elimina l’account” cancella da Firebase i tuoi voti, i '
-          'telefoni registrati e l’account stesso. I voti sul telefono restano, finché non disinstalli '
-          'l’app. Senza account basta disinstallare l’app. Per qualsiasi domanda scrivi a chi ti ha '
-          'dato CNV.'
+          'telefoni registrati e l’account stesso. '
+          '${kIsWeb ? 'I voti nel browser restano finché non cancelli i dati del sito; senza account basta '
+              'cancellarli.' : 'I voti sul telefono restano, finché non disinstalli l’app. Senza account basta '
+              'disinstallare l’app.'} '
+          'Per qualsiasi domanda scrivi a chi ti ha dato CNV.'
     ),
   ];
 

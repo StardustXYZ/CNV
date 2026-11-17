@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:cnv/data/repository.dart';
+import 'package:cnv/data/storage.dart';
 import 'package:cnv/data/updates.dart';
 import 'package:cnv/main.dart';
 import 'package:cnv/pages/privacy_page.dart';
@@ -27,25 +27,17 @@ Map<String, dynamic> release(String tag, {bool apk = true, bool draft = false, b
       ],
     };
 
-UpdateStore storeWith2(String current, List<Map<String, dynamic>> releases, File dismissed, {int status = 200}) =>
+UpdateStore storeWith2(String current, List<Map<String, dynamic>> releases, TextStorage dismissed, {int status = 200}) =>
     UpdateStore(
       currentVersion: current,
       client: MockClient((_) async => http.Response(jsonEncode(releases), status)),
-      dismissedFile: () async => dismissed,
+      storage: dismissed,
     );
 
 void main() {
-  late File dismissed;
+  late MemoryStorage dismissed; // where "Non ora" is kept, as the app's files
 
-  setUp(() async {
-    final dir = await Directory.systemTemp.createTemp('cnv-aggiornamenti');
-    dismissed = File('${dir.path}${Platform.pathSeparator}aggiornamento.txt');
-    addTearDown(() async {
-      try {
-        await dir.delete(recursive: true);
-      } catch (_) {} // Windows may still hold the file the app just wrote
-    });
-  });
+  setUp(() => dismissed = MemoryStorage());
 
   test('versions are compared number by number', () {
     expect(compareVersions('1.10.0', '1.9.2'), 1);

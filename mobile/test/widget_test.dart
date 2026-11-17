@@ -7,6 +7,7 @@ import 'package:cnv/data/models.dart';
 import 'package:cnv/data/repository.dart';
 import 'package:cnv/home.dart';
 import 'package:cnv/main.dart';
+import 'package:cnv/pages/voti_page.dart';
 
 import 'programme_test.dart' show sample;
 
@@ -66,7 +67,7 @@ void main() {
     // Finger to the left: the next page, and the menu follows
     await tester.fling(find.byType(PageView), const Offset(-400, 0), 1500);
     await tester.pumpAndSettle();
-    expect(find.text('Salva una copia dei voti'), findsOneWidget); // the Voti page
+    expect(find.byType(VotiPage), findsOneWidget);
     expect(tester.widget<NavigationBar>(menu).selectedIndex, 4);
 
     await tester.fling(find.byType(PageView), const Offset(400, 0), 1500);

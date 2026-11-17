@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cnv/data/personal.dart';
+import 'package:cnv/data/storage.dart';
+import 'package:cnv/data/storage_io.dart';
 
 /// Votes kept in memory: nothing written on disk.
 class MemoryPersonal extends PersonalStore {
@@ -93,10 +95,39 @@ void main() {
   test('the votes are saved in a file and read back when the app opens again', () async {
     final dir = await Directory.systemTemp.createTemp('cnv-voti');
     addTearDown(() => dir.delete(recursive: true));
-    final p = PersonalStore(folder: () async => dir);
+    final p = PersonalStore(storage: FileStorage(() async => dir));
     await p.toggleVote(5, 'V', today: '2026-11-14');
-    final again = PersonalStore(folder: () async => dir);
+    final again = PersonalStore(storage: FileStorage(() async => dir));
     await again.load();
     expect(again.votesById, {5: 'V'});
+  });
+
+  test('the first time in the browser the old web version votes are taken over, once', () async {
+    final storage = MemoryStorage();
+    const old = '{"votes": {"3": "V", "7": "?", "9": "X"}, "seen": {}, "exported": {"3": "2026-11-01"}, "diary": {}}';
+    var asked = 0;
+    Future<String?> oldVotes() async {
+      asked++;
+      return old;
+    }
+
+    final first = PersonalStore(storage: storage, oldWebVotes: oldVotes);
+    await first.load();
+    expect(first.votesById, {3: 'V', 7: '?'}); // the old X is dropped
+    expect(first.exported, {3: '2026-11-01'});
+    expect(storage.texts.containsKey('personal.json'), isTrue); // saved in the new place
+
+    // Later the new votes win: the old ones are not read again
+    await first.toggleVote(7, '?', today: '2026-11-16'); // removes the ?
+    final again = PersonalStore(storage: storage, oldWebVotes: oldVotes);
+    await again.load();
+    expect(again.votesById, {3: 'V'});
+    expect(asked, 1);
+  });
+
+  test('on the phone, or with nothing to take over, it starts empty', () async {
+    final p = PersonalStore(storage: MemoryStorage(), oldWebVotes: () async => null);
+    await p.load();
+    expect(p.votesById, isEmpty);
   });
 }

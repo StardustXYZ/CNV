@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -40,7 +41,16 @@ class Poster extends StatelessWidget {
           aspectRatio: 2 / 3,
           child: url == null
             ? placeholder
-            : CachedNetworkImage(
+            : kIsWeb
+                // TMDB does not let a page read its images, only show them: a plain image
+                ? Image.network(
+                    url!,
+                    fit: BoxFit.cover,
+                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                    loadingBuilder: (_, image, progress) => progress == null ? image : placeholder,
+                    errorBuilder: (_, _, _) => placeholder,
+                  )
+                : CachedNetworkImage(
                 imageUrl: url!,
                 fit: BoxFit.cover,
                   placeholder: (_, _) => placeholder,

@@ -1,21 +1,16 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../data/models.dart';
 import '../theme.dart';
+import 'save_file_io.dart' if (dart.library.js_interop) 'save_file_web.dart';
 
-/// Makes a file and opens the share menu (Drive, email, Files…), where it can be saved.
-/// The tests replace it.
+/// Gives the file: on the phone the share menu (Drive, email, Files…), where it can be
+/// saved; in the browser a download. The tests replace it.
 Future<void> Function(BuildContext context, String name, String content, String mime) shareTextFile = _shareTextFile;
 
 Future<void> _shareTextFile(BuildContext context, String name, String content, String mime) async {
   try {
-    final file = File('${(await getTemporaryDirectory()).path}${Platform.pathSeparator}$name');
-    await file.writeAsString(content, flush: true);
-    await SharePlus.instance.share(ShareParams(files: [XFile(file.path, mimeType: mime)], subject: name));
+    await saveTextFile(name, content, mime);
   } catch (err) {
     if (context.mounted) say(context, 'Non riesco a preparare il file: $err');
   }

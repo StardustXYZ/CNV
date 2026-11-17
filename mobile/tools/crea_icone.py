@@ -1,9 +1,10 @@
-"""Draw the Android icons of CNV: the white clapperboard on the purple gradient of the web app.
+"""Draw the icons of CNV: the white clapperboard on the purple gradient of the web app.
 
 Writes into android/app/src/main/res/ the classic icon (old Android versions), the two
 layers of the adaptive icon (Android shapes it as a circle, squircle…), the single-colour
-version for themed icons (Android 13+) and the small white icon of the notifications. The PNG files are committed, so this runs only when
-the icon changes. Needs Pillow (pip install pillow).
+version for themed icons (Android 13+) and the small white icon of the notifications; into
+web/ the icons of the browser version (tab, home screen, maskable). The PNG files are
+committed, so this runs only when the icon changes. Needs Pillow (pip install pillow).
 
 Usage, from the mobile/ folder:
     python tools/crea_icone.py
@@ -17,6 +18,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 RES = Path(__file__).resolve().parent.parent / "android" / "app" / "src" / "main" / "res"
+WEB = Path(__file__).resolve().parent.parent / "web"
 SUPERSAMPLE = 4  # drawn bigger, then reduced: smooth edges
 
 TOP = (184, 132, 252)  # gradient of the web icon (phone/icons/icon-512.png)
@@ -130,7 +132,16 @@ def main() -> None:
         "</adaptive-icon>\n",
         encoding="utf-8",
     )
-    print(f"Icone salvate in {RES}")
+
+    # Browser: the full icon, and the "maskable" one the system cuts to its own shape
+    (WEB / "icons").mkdir(parents=True, exist_ok=True)
+    for size in (192, 512):
+        classic(size).save(WEB / "icons" / f"Icon-{size}.png", optimize=True)
+        maskable = gradient(size).convert("RGBA")
+        maskable.alpha_composite(clapperboard(size, 0.70))  # inside the safe circle
+        maskable.save(WEB / "icons" / f"Icon-maskable-{size}.png", optimize=True)
+    classic(32).save(WEB / "favicon.png", optimize=True)
+    print(f"Icone salvate in {RES} e {WEB}")
 
 
 if __name__ == "__main__":

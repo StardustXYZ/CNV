@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
+import 'storage.dart';
 
 /// The data of the web version, rebuilt by GitHub every night.
 const dataUrl = 'https://stardustxyz.github.io/CNV/data.json';
@@ -23,25 +22,31 @@ class LoadResult {
 
 /// Downloads data.json and keeps the last good copy on the phone, for use without connection.
 class DataRepository {
-  DataRepository({http.Client? client, Future<Directory> Function()? folder, this.url = dataUrl})
+  DataRepository({http.Client? client, TextStorage? storage, this.url = dataUrl})
       : _client = client ?? http.Client(),
-        _folder = folder ?? getApplicationSupportDirectory;
+        _storage = storage ?? deviceStorage();
 
+  static const _name = 'data.json';
   final http.Client _client;
-  final Future<Directory> Function() _folder;
+  final TextStorage _storage;
   final String url;
-
-  Future<File> _cacheFile() async => File('${(await _folder()).path}${Platform.pathSeparator}data.json');
 
   /// Fresh data when the network answers (saved for next time), else the saved copy.
   /// Throws only when there is neither.
   Future<LoadResult> load() async {
     try {
-      final resp = await _client.get(Uri.parse(url), headers: {'Cache-Control': 'no-cache'}).timeout(const Duration(seconds: 20));
-      if (resp.statusCode != 200) throw HttpException('data.json: HTTP ${resp.statusCode}');
+      // Never yesterday's copy from a cache. A browser would first ask GitHub whether that
+      // header is allowed (and GitHub does not answer): there the address changes instead
+      final uri = kIsWeb
+          ? Uri.parse(url).replace(queryParameters: {'t': '${DateTime.now().millisecondsSinceEpoch}'})
+          : Uri.parse(url);
+      final resp = await _client
+          .get(uri, headers: kIsWeb ? null : {'Cache-Control': 'no-cache'})
+          .timeout(const Duration(seconds: 20));
+      if (resp.statusCode != 200) throw http.ClientException('data.json: HTTP ${resp.statusCode}');
       final text = utf8.decode(resp.bodyBytes);
       final data = CnvData.fromJson(jsonDecode(text) as Map<String, dynamic>); // checked before replacing the copy
-      await (await _cacheFile()).writeAsString(text, flush: true);
+      await _storage.write(_name, text);
       return LoadResult(data, offline: false);
     } catch (err) {
       final saved = await readSaved();
@@ -53,9 +58,9 @@ class DataRepository {
   /// The copy kept on the phone (null if there is none or it cannot be read).
   Future<CnvData?> readSaved() async {
     try {
-      final file = await _cacheFile();
-      if (!await file.exists()) return null;
-      return CnvData.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
+      final text = await _storage.read(_name);
+      if (text == null) return null;
+      return CnvData.fromJson(jsonDecode(text) as Map<String, dynamic>);
     } catch (err) {
       debugPrint('Copia dei dati non leggibile: $err');
       return null;

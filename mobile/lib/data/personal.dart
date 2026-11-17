@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/widgets.dart';
-import 'package:path_provider/path_provider.dart';
+import 'storage.dart';
+import 'storage.dart' as storage_lib show oldWebVotes;
 
 /// V: voglio vederlo, ?: indeciso, S: visto (shown as ✓). The same codes as the web version.
 const votes = ['V', '?', 'S'];
@@ -72,9 +72,13 @@ enum SyncState { off, connecting, connected, error }
 /// on the phone (same shape as the "copia dei voti" of the web version, so that copy can be
 /// restored here) and, with an admitted account, also in the account, entry by entry.
 class PersonalStore extends ChangeNotifier {
-  PersonalStore({Future<Directory> Function()? folder}) : _folder = folder ?? getApplicationSupportDirectory;
+  PersonalStore({TextStorage? storage, Future<String?> Function()? oldWebVotes})
+      : _storage = storage ?? deviceStorage(),
+        _oldWebVotes = oldWebVotes ?? storage_lib.oldWebVotes;
 
-  final Future<Directory> Function() _folder;
+  static const _name = 'personal.json';
+  final TextStorage _storage;
+  final Future<String?> Function() _oldWebVotes; // the old web version's, in the browser
 
   Map<int, String> votesById = {};
   Map<int, SeenInfo> seen = {};
@@ -92,12 +96,17 @@ class PersonalStore extends ChangeNotifier {
 
   String? vote(int film) => votesById[film];
 
-  Future<File> _file() async => File('${(await _folder()).path}${Platform.pathSeparator}personal.json');
-
+  /// The votes saved here. The first time in the browser, the old web version's votes
+  /// (same site) are taken over, so nothing is lost when it is replaced.
   Future<void> load() async {
     try {
-      final file = await _file();
-      if (await file.exists()) _read(jsonDecode(await file.readAsString()));
+      final saved = await _storage.read(_name);
+      if (saved != null) {
+        _read(jsonDecode(saved));
+      } else if (await _oldWebVotes() case final old?) {
+        _read(jsonDecode(old));
+        await persist();
+      }
     } catch (err) {
       debugPrint('Voti non leggibili: $err');
     }
@@ -114,7 +123,7 @@ class PersonalStore extends ChangeNotifier {
   @protected
   Future<void> persist() async {
     try {
-      await (await _file()).writeAsString(exportJson(), flush: true);
+      await _storage.write(_name, exportJson());
     } catch (err) {
       debugPrint('Voti non salvati: $err');
     }

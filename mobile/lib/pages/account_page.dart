@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,6 +7,7 @@ import '../data/notifications.dart';
 import '../data/personal.dart';
 import '../theme.dart';
 import '../widgets/letterboxd_widgets.dart' show say;
+import '../data/device_words.dart';
 
 /// Gives the pages the account (and rebuilds them when it changes).
 class AccountScope extends InheritedNotifier<AccountStore> {
@@ -40,8 +42,8 @@ Future<void> _signOut(BuildContext context, AccountStore account) async {
     context: context,
     builder: (dialog) => AlertDialog(
       title: const Text('Uscire dall’account?'),
-      content: const Text('I voti restano su questo telefono e nell’account; le modifiche fatte da ora '
-          'in poi restano solo sul telefono, finché non rientri.'),
+      content: const Text('I voti restano $onThisDevice e nell’account; le modifiche fatte da ora '
+          'in poi restano solo $onDevice, finché non rientri.'),
       actions: [
         TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Annulla')),
         FilledButton(onPressed: () => Navigator.of(dialog).pop(true), child: const Text('Esci')),
@@ -57,7 +59,7 @@ Future<void> _deleteAccount(BuildContext context, AccountStore account) async {
     builder: (dialog) => AlertDialog(
       title: const Text('Eliminare l’account?'),
       content: const Text('Cancello da Firebase i tuoi voti, i film visti, i telefoni registrati per le '
-          'notifiche e l’account stesso. Non si può annullare. I voti su questo telefono restano.'),
+          'notifiche e l’account stesso. Non si può annullare. I voti $onThisDevice restano.'),
       actions: [
         TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Annulla')),
         FilledButton(
@@ -89,11 +91,10 @@ class AccountSection extends StatelessWidget {
         children.add(Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(s, style: TextStyle(fontSize: 13, color: color, height: 1.35))));
 
     if (!account.available) {
-      text("L'accesso non è disponibile su questo telefono. CNV funziona lo stesso.");
+      text("L'accesso non è disponibile $onThisDevice. CNV funziona lo stesso.");
     } else if (user == null) {
-      text("Con l'account i tuoi voti si salvano anche online e li ritrovi su un altro telefono, e puoi "
-          'ricevere le notifiche dei film nuovi in sala. CNV funziona anche senza. L’account è solo su invito: se non sei nella '
-          'lista, chiedi di aggiungerti.');
+      text('${kIsWeb ? "Con l'account i tuoi voti si salvano anche online e sono gli stessi dell’app sul telefono." : "Con l'account i tuoi voti si salvano anche online e li ritrovi su un altro telefono, e puoi ricevere le notifiche dei film nuovi in sala."} '
+          'CNV funziona anche senza. L’account è solo su invito: se non sei nella lista, chiedi di aggiungerti.');
       children.addAll([
         FilledButton.icon(
           onPressed: account.busy ? null : () => _attempt(context, account.signInWithGoogle),
@@ -453,7 +454,7 @@ class SyncStatus extends StatelessWidget {
     final (text, color) = switch (personal.sync) {
       SyncState.off || SyncState.connecting => ('Collego i tuoi voti all’account…', CnvColors.textMuted),
       SyncState.connected when personal.pending =>
-        ('Voti salvati sul telefono: arrivano all’account appena c’è connessione.', CnvColors.yellow),
+        ('Voti salvati $onDevice: arrivano all’account appena c’è connessione.', CnvColors.yellow),
       SyncState.connected => ('✓ Sei nella lista e i tuoi voti sono salvati anche nell’account.', CnvColors.green),
       SyncState.error => (personal.syncError ?? 'I voti non arrivano all’account.', CnvColors.yellow),
     };

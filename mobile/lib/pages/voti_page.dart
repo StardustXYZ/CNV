@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/personal.dart';
@@ -10,6 +11,7 @@ import '../theme.dart';
 import '../widgets/letterboxd_widgets.dart';
 import 'account_page.dart';
 import 'update_widgets.dart';
+import '../data/device_words.dart';
 
 /// "Voti": how many films have each vote, and the copy of the votes (save and restore,
 /// also the one made by the web version). Login and notifications come later.
@@ -30,7 +32,7 @@ class VotiPage extends StatelessWidget {
           const AccountSection(),
           const Text('I tuoi voti', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text(personal.linked ? 'Li vedi solo tu: sono su questo telefono e nel tuo account.' : 'Li vedi solo tu e restano su questo telefono.',
+          Text(personal.linked ? 'Li vedi solo tu: sono $onThisDevice e nel tuo account.' : 'Li vedi solo tu e restano $onThisDevice.',
               style: TextStyle(fontSize: 13, color: CnvColors.textMuted)),
           const SizedBox(height: 12),
           Row(
@@ -45,8 +47,11 @@ class VotiPage extends StatelessWidget {
           const Text('Copia dei voti', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           const Text(
-              'Salvala ogni tanto (su Drive, per email…): se cambi telefono o reinstalli l’app la ripristini da qui. '
-              'Va bene anche la copia fatta con la versione web.',
+              kIsWeb
+                  ? 'Salvala ogni tanto: se cambi browser o PC, o cancelli i dati del sito, la ripristini da qui. '
+                      'Va bene anche la copia fatta con l’app sul telefono o con la vecchia versione web.'
+                  : 'Salvala ogni tanto (su Drive, per email…): se cambi telefono o reinstalli l’app la ripristini da qui. '
+                      'Va bene anche la copia fatta con la versione web.',
               style: TextStyle(fontSize: 13, color: CnvColors.textMuted, height: 1.35)),
           const SizedBox(height: 12),
           FilledButton.icon(
@@ -93,7 +98,7 @@ class VotiPage extends StatelessWidget {
       builder: (dialog) => AlertDialog(
         title: const Text('Ripristinare la copia?'),
         content: Text('La copia ha $count ${count == 1 ? 'voto' : 'voti'} e sostituisce i '
-            '${personal.votesById.length} che hai ora su questo telefono.'),
+            '${personal.votesById.length} che hai ora $onThisDevice.'),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Annulla')),
           FilledButton(onPressed: () => Navigator.of(dialog).pop(true), child: const Text('Ripristina')),

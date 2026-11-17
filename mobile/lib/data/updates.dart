@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
+import 'storage.dart';
 
 /// Where the versions of the app are published: the Releases of the GitHub repository, with
 /// tags "app-v1.2.3" and the APK attached.
@@ -66,13 +65,14 @@ class UpdateStore extends ChangeNotifier {
   UpdateStore({
     required this.currentVersion,
     http.Client? client,
-    Future<File> Function()? dismissedFile,
+    TextStorage? storage,
   })  : _client = client ?? http.Client(),
-        _dismissedFile = dismissedFile ?? _defaultFile;
+        _storage = storage ?? deviceStorage();
 
+  static const _name = 'aggiornamento.txt'; // the version dismissed with "Non ora"
   final String currentVersion;
   final http.Client _client;
-  final Future<File> Function() _dismissedFile;
+  final TextStorage _storage;
 
   AppRelease? available; // newer than this one
   String? _dismissed;
@@ -83,24 +83,17 @@ class UpdateStore extends ChangeNotifier {
   /// The notice at the top of the app: a newer version that was not dismissed.
   bool get showNotice => available != null && available!.version != _dismissed;
 
-  static Future<File> _defaultFile() async =>
-      File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}aggiornamento.txt');
-
   Future<void> check() async {
     if (checking) return;
     checking = true;
     problem = null;
     notifyListeners();
     try {
-      try {
-        _dismissed ??= (await (await _dismissedFile()).readAsString()).trim();
-      } catch (_) {
-        _dismissed ??= '';
-      }
+      _dismissed ??= (await _storage.read(_name))?.trim() ?? '';
       final resp = await _client
           .get(Uri.parse(releasesUrl), headers: {'Accept': 'application/vnd.github+json'})
           .timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) throw HttpException('GitHub ha risposto ${resp.statusCode}');
+      if (resp.statusCode != 200) throw http.ClientException('GitHub ha risposto ${resp.statusCode}');
       final latest = latestRelease(jsonDecode(resp.body));
       available = latest != null && compareVersions(latest.version, currentVersion) > 0 ? latest : null;
       checkedAt = DateTime.now();
@@ -120,7 +113,7 @@ class UpdateStore extends ChangeNotifier {
     _dismissed = version;
     notifyListeners();
     try {
-      await (await _dismissedFile()).writeAsString(version, flush: true);
+      await _storage.write(_name, version);
     } catch (err) {
       debugPrint('Scelta non salvata: $err');
     }

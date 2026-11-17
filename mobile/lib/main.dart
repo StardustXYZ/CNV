@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -31,22 +32,28 @@ Future<void> main() async {
   }
   final account = AccountStore(backend);
   UpdateStore? updates;
-  try {
-    updates = UpdateStore(currentVersion: (await PackageInfo.fromPlatform()).version);
-  } catch (err) {
-    debugPrint('Versione non letta: $err');
+  // In the browser the page is always the latest version, and notifications arrive on the phone
+  if (!kIsWeb) {
+    try {
+      updates = UpdateStore(currentVersion: (await PackageInfo.fromPlatform()).version);
+    } catch (err) {
+      debugPrint('Versione non letta: $err');
+    }
   }
   runApp(
     CnvApp(
       updates: updates,
       account: account,
-      notifications: backend != null && push != null ? NotificationStore(account, backend, push) : null,
-      foreground: push?.foreground(),
+      notifications: !kIsWeb && backend != null && push != null ? NotificationStore(account, backend, push) : null,
+      foreground: kIsWeb ? null : push?.foreground(),
     ),
   );
 }
 
-/// CNV (Chi Ni Vidimu): the films in the cinemas of Cosenza and Rende, on the phone.
+/// The widest the app gets: in a browser on a PC it stays this wide, in the middle.
+const phoneWidth = 600.0;
+
+/// CNV (Chi Ni Vidimu): the films in the cinemas of Cosenza and Rende, on the phone and in the browser.
 class CnvApp extends StatefulWidget {
   const CnvApp({
     super.key,
@@ -138,6 +145,13 @@ class _CnvAppState extends State<CnvApp> {
               locale: const Locale('it'),
               supportedLocales: const [Locale('it')],
               localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              // On a wide screen (the browser on a PC) the app keeps a phone's width, centered
+              builder: (context, child) => ColoredBox(
+                color: Colors.black,
+                child: Center(
+                  child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: phoneWidth), child: child),
+                ),
+              ),
               home: HomeShell(store: _store),
             ),
           ),

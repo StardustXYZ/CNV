@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:cnv/data/repository.dart';
+import 'package:cnv/data/storage_io.dart';
 
 String json({String generatedAt = '2026-11-14T03:00+01:00', String title = 'Clayface'}) => jsonEncode({
       'generated_at': generatedAt,
@@ -23,7 +24,7 @@ void main() {
   setUp(() async => folder = await Directory.systemTemp.createTemp('cnv_test_'));
   tearDown(() async => folder.delete(recursive: true));
 
-  DataRepository repo(MockClient client) => DataRepository(client: client, folder: () async => folder);
+  DataRepository repo(MockClient client) => DataRepository(client: client, storage: FileStorage(() async => folder));
 
   test('fresh data is used and saved for next time', () async {
     final result = await repo(MockClient((_) async => http.Response(json(), 200))).load();
