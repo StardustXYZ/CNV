@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'data/account.dart';
 import 'data/firebase_account.dart';
 import 'data/firebase_push.dart';
+import 'data/firebase_web.dart';
 import 'data/notifications.dart';
 import 'data/personal.dart';
 import 'data/repository.dart';
@@ -24,7 +25,8 @@ Future<void> main() async {
   AccountBackend? backend;
   PushBackend? push;
   try {
-    await Firebase.initializeApp(); // from android/app/google-services.json
+    // On the phone from android/app/google-services.json, in the browser from firebase_web.dart
+    await Firebase.initializeApp(options: kIsWeb ? webFirebaseOptions : null);
     backend = FirebaseAccountBackend();
     push = FirebasePushBackend();
   } catch (err) {

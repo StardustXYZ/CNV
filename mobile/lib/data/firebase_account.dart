@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'account.dart';
@@ -34,6 +35,7 @@ class FirebaseAccountBackend implements AccountBackend {
 
   @override
   Future<void> signInWithGoogle() async {
+    if (kIsWeb) return _signInWithGooglePopup();
     final google = GoogleSignIn.instance;
     try {
       if (!_googleReady) {
@@ -48,6 +50,16 @@ class FirebaseAccountBackend implements AccountBackend {
       if (err.code == GoogleSignInExceptionCode.canceled) return; // closed by the user
       throw AccountError('Accesso con Google non riuscito (${err.code.name}). Riprova.');
     } on FirebaseAuthException catch (err) {
+      throw AccountError(_authMessage(err));
+    }
+  }
+
+  /// In the browser: Google's own window, opened by Firebase (the phone's way does not exist there).
+  Future<void> _signInWithGooglePopup() async {
+    try {
+      await _auth.signInWithPopup(GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'}));
+    } on FirebaseAuthException catch (err) {
+      if (err.code == 'popup-closed-by-user' || err.code == 'cancelled-popup-request') return; // closed by the user
       throw AccountError(_authMessage(err));
     }
   }
@@ -186,6 +198,8 @@ class FirebaseAccountBackend implements AccountBackend {
         'network-request-failed' => 'Senza connessione: riprova quando sei online.',
         'account-exists-with-different-credential' =>
           'Questa email ha già un account con un altro modo di accesso: usa quello.',
+        'popup-blocked' => 'Il browser ha bloccato la finestra di Google: permetti le finestre di questo sito e riprova.',
+        'unauthorized-domain' => 'Questo indirizzo non è autorizzato per l’accesso: va aggiunto nella console di Firebase.',
         _ => 'Accesso non riuscito (${err.code}).',
       };
 }
