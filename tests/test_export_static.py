@@ -122,15 +122,30 @@ def test_build_data_marks_original_language_and_age_on_each_show(db):
 def test_build_site(db, tmp_path):
     _seed(db)
     data = build_data(db, today=TODAY, now=NOW)
+    app = tmp_path / "web"  # what flutter build web leaves in mobile/build/web
+    (app / "icons").mkdir(parents=True)
+    for name in ("index.html", "main.dart.js", "manifest.json", "sw.js", "icons/Icon-192.png"):
+        (app / name).write_text(name, encoding="utf-8")
     out = tmp_path / "site"
-    build_site(out, data)
+    (out / "vecchio").mkdir(parents=True)  # yesterday's site is replaced, not merged
 
-    for name in ("index.html", "app.js", "style.css", "phone.css", "manifest.webmanifest", "sw.js",
-                 "icons/icon-192.png", "icons/icon-512.png", "data.json"):
-        assert (out / name).exists(), name
+    build_site(out, data, app)
+    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()) == [
+        "data.json", "icons/Icon-192.png", "index.html", "main.dart.js", "manifest.json", "sw.js",
+    ]
     assert json.loads((out / "data.json").read_text(encoding="utf-8")) == data
-    sw = (out / "sw.js").read_text(encoding="utf-8")
-    assert "__BUILD__" not in sw and data["generated_at"] in sw
+
+
+def test_build_site_needs_the_app_built_first(db, tmp_path):
+    with pytest.raises(FileNotFoundError, match="flutter build web"):
+        build_site(tmp_path / "site", {}, tmp_path / "nessuna-app")
+
+
+def test_the_site_removes_the_old_web_version_cache():
+    from app.config import ROOT_DIR
+
+    sw = (ROOT_DIR / "mobile" / "web" / "sw.js").read_text(encoding="utf-8")
+    assert "caches.delete" in sw and "registration.unregister()" in sw
 
 
 def test_build_data_lists_merged_films(db):

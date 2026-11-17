@@ -1,9 +1,10 @@
 # CNV sul telefono: ogni notte aggiorna i dati e pubblica il sito su GitHub Pages.
 #
-# 1. recupera il database dal ramo "dati" (se esiste già)
-# 2. fa il sync: siti dei cinema, prossimamente, TMDB, stati dei film
-# 3. salva il database nel ramo "dati" (un solo commit, sovrascritto ogni volta)
-# 4. costruisce il sito (phone/ + data.json) e lo pubblica su GitHub Pages
+# 1. costruisce l'app Flutter per il browser (se non riesce, stanotte non cambia niente)
+# 2. recupera il database dal ramo "dati" (se esiste già)
+# 3. fa il sync: siti dei cinema, prossimamente, TMDB, stati dei film
+# 4. salva il database nel ramo "dati" (un solo commit, sovrascritto ogni volta)
+# 5. pubblica su GitHub Pages l'app per il browser con data.json, che legge anche l'app Android
 #
 # Serve: repository pubblico, segreto TMDB_API_KEY, Settings -> Pages -> Source: GitHub Actions.
 # Notifiche dell'app Android (facoltative): segreto FIREBASE_SERVICE_ACCOUNT (la chiave JSON
@@ -37,7 +38,7 @@ concurrency:
 jobs:
   aggiorna:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.pubblica.outputs.page_url }}
@@ -47,6 +48,17 @@ jobs:
       AUTO_SYNC: "0"
     steps:
       - uses: actions/checkout@v7
+
+      # Prima di tutto: se l'app non si costruisce, il resto non parte e il sito resta quello di ieri
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.35.7
+          channel: stable
+          cache: true
+
+      - name: Costruisci l'app per il browser (Flutter)
+        working-directory: mobile
+        run: flutter build web --release --base-href /CNV/ --pwa-strategy=none --no-wasm-dry-run
 
       - name: Recupera il database
         run: |
@@ -94,7 +106,7 @@ jobs:
             commit --quiet -m "Database CNV del $(date +%d/%m/%Y)"
           git push --quiet --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" dati
 
-      - name: Costruisci il sito per il telefono
+      - name: Costruisci il sito (app per il browser e dati)
         run: python -m app.export_static --out site
 
       - uses: actions/configure-pages@v6

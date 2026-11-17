@@ -16,7 +16,7 @@ Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Un
 - **Export per Letterboxd**: CSV con l'ID TMDB di ogni film, così Letterboxd sceglie il film esatto; i film già esportati non vengono ripetuti.
 - **Aggiornamento automatico** ogni giorno, con backup del database prima di ogni aggiornamento e una pagina di stato.
 
-## App Android
+## App Android e versione web
 
 Sul telefono CNV è un'app Android (cartella `mobile/`, in Flutter) che legge i dati aggiornati ogni notte da GitHub: film in sala con gli orari, in uscita con il calendario, pagine dei cinema, voti **V / ? / ✓**, watchlist e diario per Letterboxd, statistiche dei film visti.
 
@@ -31,6 +31,10 @@ Con l'**account** (Google, oppure email e password) i voti si salvano anche onli
 Quando esce una versione nuova, l'app lo dice in alto: **Scarica**, poi apri il file e tocca **Aggiorna**. I voti restano.
 
 Cosa salva CNV e dove è spiegato nell'app: pagina **Voti** → **Privacy**. Da lì si può anche eliminare l'account.
+
+### Nel browser
+
+La stessa app si apre anche nel browser, per esempio sul PC: https://stardustxyz.github.io/CNV/. Ha le stesse pagine e, con lo stesso account, gli stessi voti del telefono; senza account i voti restano in quel browser. Non ha le notifiche (arrivano sull'app Android) né l'avviso delle versioni nuove (la pagina è sempre l'ultima). La prima volta prende da sola i voti della vecchia versione web salvati nello stesso browser.
 
 ## Primo avvio (Windows)
 
@@ -181,9 +185,9 @@ pytest
 
 I test usano un database in memoria e un TMDB finto: non toccano `cinewatch.db` e non vanno in rete.
 
-## Costruire e pubblicare l'app Android
+## Costruire e pubblicare l'app
 
-Serve Flutter (`C:lutter`). Restano sul PC, fuori da git:
+Serve Flutter (`C:\flutter`). Restano sul PC, fuori da git:
 
 - `mobile/android/app/google-services.json`: si scarica da Firebase → Impostazioni progetto → app Android;
 - `mobile/android/key.properties` e la chiave `cnv-firma.jks`: firmano le versioni da pubblicare (vedi `mobile/android/key.properties.example`). Senza la chiave le versioni nuove non si installano sopra quelle vecchie: va tenuta con una copia di riserva.
@@ -193,6 +197,17 @@ cd mobile
 flutter test
 flutter build apk --release --target-platform android-arm64
 ```
+
+La versione per il browser la costruisce GitHub ogni notte, insieme ai dati (workflow **Aggiorna CNV per il telefono**). Per provarla sul PC:
+
+```bash
+cd mobile
+flutter build web --base-href /CNV/ --pwa-strategy=none
+cd ..
+python -m app.export_static --out site
+```
+
+La cartella `site/` va servita all'indirizzo `/CNV/` (es. una cartella `CNV` dentro quella servita da `python -m http.server`).
 
 L'APK è in `mobile/build/app/outputs/flutter-apk/app-release.apk`. Per pubblicarlo: GitHub → **Releases** → **Draft a new release**, tag `app-v` più la versione di `pubspec.yaml` (es. `app-v0.11.0`), allega l'APK rinominato `CNV-0.11.0.apk` e pubblica. L'app controlla le release con quel tag e avvisa chi ha una versione più vecchia.
 
@@ -211,8 +226,7 @@ app/
 config/
   cinemas.yaml     # cinema, fonti dei film in arrivo e impostazioni
 tests/             # test automatici e pagine HTML di esempio dei cinema
-phone/             # versione web per il telefono (GitHub Pages)
-mobile/            # app Android in Flutter
+mobile/            # l'app in Flutter: Android e browser (GitHub Pages)
 firebase/          # regole di accesso di Firestore e i loro test
 run.bat / run.sh   # avvio
 crea_collegamento.ps1, sync_giornaliero.bat   # icona sul Desktop e aggiornamento pianificato (Windows)

@@ -1,10 +1,11 @@
-"""Build the phone version of CNV: a static site with the day's data.
+"""Build the site of CNV: the app for the browser with the day's data.
 
-GitHub Actions runs the sync every morning, then this command writes ``data.json``
-(films, shows, coming soon, cinemas) and copies the web app in ``phone/`` next to it.
-The phone does the rest: today's remaining shows, calendar, votes and Letterboxd export.
+GitHub Actions runs the sync every night, then this command writes ``data.json`` (films,
+shows, coming soon, cinemas) next to the Flutter app built for the browser
+(``mobile/build/web``). The Android app reads the same ``data.json``; the app does the
+rest: today's remaining shows, calendar, votes and Letterboxd export.
 
-Usage:
+Usage, after building the app (from mobile/: flutter build web --base-href /CNV/ --pwa-strategy=none):
     python -m app.export_static --out site
 """
 
@@ -26,8 +27,7 @@ from app.db.models import Cinema, ComingSoon, Film, FilmMerge, Showtime
 from app.services.schedule import SHOW_EXTRA_MINUTES
 from app.services.sync import cinemas_not_updated
 
-PHONE_DIR = ROOT_DIR / "phone"
-STYLE_CSS = ROOT_DIR / "app" / "web" / "static" / "style.css"
+APP_DIR = ROOT_DIR / "mobile" / "build" / "web"  # the Flutter app built for the browser
 SHOWS_FROM_DAYS_AGO = 1  # yesterday's late shows still belong to last night's programme
 
 # How the cinemas mark a show in the original language ("V.O. SOTT.", "V.O.S.", ...) and its age limit
@@ -143,27 +143,29 @@ def _film_pages(db: Session, announcements: list[ComingSoon], slug_by_id: dict[i
     return [{"f": film_id, "c": slug_by_id[cinema_id], "u": url} for (film_id, cinema_id), (_, url) in sorted(found.items())]
 
 
-def build_site(out_dir: Path, data: dict) -> None:
-    """Write data.json and the phone app into ``out_dir``."""
+def build_site(out_dir: Path, data: dict, app_dir: Path = APP_DIR) -> None:
+    """Write the browser app and data.json into ``out_dir``."""
+    if not (app_dir / "index.html").exists():
+        raise FileNotFoundError(
+            f"Manca l'app per il browser in {app_dir}: da mobile/ esegui prima "
+            "flutter build web --base-href /CNV/ --pwa-strategy=none"
+        )
     if out_dir.exists():
         shutil.rmtree(out_dir)
-    shutil.copytree(PHONE_DIR, out_dir)
-    shutil.copy2(STYLE_CSS, out_dir / "style.css")
+    shutil.copytree(app_dir, out_dir)
     (out_dir / "data.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    # A new cache name at every build, so phones pick up the new app files
-    sw = out_dir / "sw.js"
-    sw.write_text(sw.read_text(encoding="utf-8").replace("__BUILD__", data["generated_at"]), encoding="utf-8")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Costruisce la versione per il telefono di CNV")
+    parser = argparse.ArgumentParser(description="Costruisce il sito di CNV (app per il browser e dati)")
     parser.add_argument("--out", default="site", help="cartella di destinazione (default: site)")
-    out_dir = Path(parser.parse_args().out)
+    parser.add_argument("--app", default=str(APP_DIR), help="app Flutter costruita per il browser")
+    args = parser.parse_args()
     init_db()
     with SessionLocal() as db:
         data = build_data(db)
-    build_site(out_dir, data)
-    print(f"Sito per il telefono in {out_dir}: {len(data['films'])} film, {len(data['shows'])} spettacoli")
+    build_site(Path(args.out), data, Path(args.app))
+    print(f"Sito di CNV in {args.out}: {len(data['films'])} film, {len(data['shows'])} spettacoli")
 
 
 if __name__ == "__main__":
