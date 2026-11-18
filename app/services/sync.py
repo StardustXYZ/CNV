@@ -330,7 +330,7 @@ async def run_sync(
     """Run scrapers, update database, record snapshots, and transition film statuses.
 
     All the websites are read first and the database is written only afterwards, in a
-    short transaction: while the sync waits on the network the app can still save votes.
+    short transaction: while the sync waits on the network the database stays free for other writers.
 
     Args:
         db: SQLAlchemy database session.
@@ -690,8 +690,7 @@ async def run_sync(
             target_status = "in_sala"
 
         if target_status != "in_sala":
-            # If it comes back to theaters, that is news again (notice and phone notification)
-            film.in_sala_noticed = False
+            # If it comes back to theaters, that is news again (phone notification)
             film.in_sala_pushed = False
 
         # Apply state transitions

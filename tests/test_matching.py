@@ -153,14 +153,11 @@ async def test_sync_with_matcher_merges_duplicates(db):
     await run_sync(db, as_of_date=TODAY, cinemas=CINEMAS, scraper_results=day1)
     assert db.query(Film).count() == 2
     first = db.query(Film).filter_by(normalized_title="mammina").one()
-    first.vote = "V"
-    db.commit()
 
     res = await run_sync(db, as_of_date=TODAY, cinemas=CINEMAS, scraper_results=day1, matcher=tmdb)
 
     film = db.query(Film).one()
     assert film.id == first.id
-    assert film.vote == "V"
     assert film.tmdb_id == MAMMINA.id
     assert film.tmdb_match_status == STATUS_MATCHED
     assert film.year == 2026
@@ -279,21 +276,6 @@ async def test_unexpected_tmdb_error_skips_only_that_film(db):
     rotto = db.query(Film).filter_by(normalized_title="film rotto").one()
     assert rotto.tmdb_match_status is None  # retried next time
     assert db.query(Film).filter_by(normalized_title="mammina").one().tmdb_id == MAMMINA.id
-
-
-def test_merge_keeps_the_most_interested_vote(db):
-    from app.services.matching import merge_films
-
-    def film(title, vote):
-        f = Film(raw_title=title, normalized_title=title.lower(), vote=vote)
-        db.add(f)
-        db.flush()
-        return f
-
-    for survivor_vote, other_vote, expected in [("?", "V", "V"), ("V", "?", "V"), (None, "?", "?"), ("V", None, "V")]:
-        survivor, other = film(f"A{expected}{survivor_vote}", survivor_vote), film(f"B{expected}{other_vote}", other_vote)
-        merge_films(db, survivor, other)
-        assert survivor.vote == expected
 
 
 def test_merge_is_recorded_and_ids_are_not_reused(db):
@@ -444,26 +426,3 @@ def test_manual_match_from_the_details_needs_no_later_fetch(db):
     db.flush()
     confirm_match(db, f, _details(1400837, 92, "Horror"))
     assert f.has_tmdb_details and (f.runtime, f.genre) == (92, "Horror")
-
-
-def test_merge_keeps_the_in_sala_notice_seen_on_either_copy(db):
-    from app.services.matching import merge_films
-
-    survivor = Film(raw_title="Hope", normalized_title="hope", status="in_sala", vote="V")
-    other = Film(raw_title="HOPE (2026)", normalized_title="hope 2026", status="in_sala", vote="V", in_sala_noticed=True)
-    db.add_all([survivor, other])
-    db.flush()
-    merge_films(db, survivor, other)
-    assert survivor.in_sala_noticed  # the "Ora in sala" notice does not come back
-
-
-def test_merge_keeps_seen_with_its_day_and_cinema(db):
-    from app.services.matching import merge_films
-
-    survivor = Film(raw_title="Hope", normalized_title="hope", status="in_sala", vote="V")
-    other = Film(raw_title="HOPE 2026", normalized_title="hope 2026", status="in_sala", vote="S",
-                 seen_on=date(2026, 11, 8), diary_exported=True)
-    db.add_all([survivor, other])
-    db.flush()
-    merge_films(db, survivor, other)
-    assert (survivor.vote, survivor.seen_on, survivor.diary_exported) == ("S", date(2026, 11, 8), True)

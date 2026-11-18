@@ -46,16 +46,13 @@ class Film(Base):
     tmdb_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     poster_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Anno
-    vote: Mapped[str | None] = mapped_column(String(1), nullable=True)  # V / ? (indeciso) / S (visto, ✓) / None
     status: Mapped[str] = mapped_column(String(50), default="in_uscita", index=True)  # in_uscita | in_sala | uscito
     left_theaters_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    letterboxd_exported: Mapped[bool] = mapped_column(Boolean, default=False)
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     last_seen_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Last day a cinema announced it (prossimamente): a film never screened leaves when this gets old
     last_announced_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    exported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_event: Mapped[bool] = mapped_column(Boolean, default=False)
     consecutive_missing_days: Mapped[int] = mapped_column(Integer, default=0)
     runtime: Mapped[int | None] = mapped_column(Integer, nullable=True)  # minutes, from the TMDB details
@@ -66,21 +63,14 @@ class Film(Base):
     director: Mapped[str | None] = mapped_column(String(300), nullable=True)
     cast_names: Mapped[str | None] = mapped_column(String(500), nullable=True)
     credits_tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # The "now in sala" notice for a V film was seen (or the vote was given while in sala)
-    in_sala_noticed: Mapped[bool] = mapped_column(Boolean, default=False)
     # The phone was notified that it arrived in theaters (app/push.py)
     in_sala_pushed: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Vote "S" (seen, ✓): when and where, and whether it went into the Letterboxd diary
-    seen_on: Mapped[date | None] = mapped_column(Date, nullable=True)
-    seen_cinema_id: Mapped[int | None] = mapped_column(ForeignKey("cinemas.id"), nullable=True)
-    diary_exported: Mapped[bool] = mapped_column(Boolean, default=False)
 
     showtimes: Mapped[list[Showtime]] = relationship(back_populates="film", cascade="all, delete-orphan")
     snapshots: Mapped[list[DailySnapshot]] = relationship(back_populates="film", cascade="all, delete-orphan")
     aliases: Mapped[list[FilmAlias]] = relationship(back_populates="film", cascade="all, delete-orphan")
     coming_soon: Mapped[list[ComingSoon]] = relationship(back_populates="film", cascade="all, delete-orphan")
     last_days: Mapped[list[LastDays]] = relationship(back_populates="film", cascade="all, delete-orphan")
-    seen_cinema: Mapped[Cinema | None] = relationship()
 
     @property
     def is_tmdb_confirmed(self) -> bool:
@@ -97,7 +87,7 @@ class Film(Base):
         return self.is_tmdb_confirmed and self.credits_tmdb_id == self.tmdb_id
 
     def __repr__(self) -> str:
-        return f"<Film {self.raw_title!r} status={self.status} vote={self.vote}>"
+        return f"<Film {self.raw_title!r} status={self.status}>"
 
 
 class FilmAlias(Base):

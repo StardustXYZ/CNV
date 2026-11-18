@@ -1,6 +1,7 @@
 """SQLAlchemy engine and session factory."""
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
@@ -10,6 +11,11 @@ from app.config import settings
 _connect_args = {"timeout": 15} if settings.DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(settings.DATABASE_URL, echo=False, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine)
+
+
+LEGACY_FILM_COLUMNS = (
+    "vote", "letterboxd_exported", "exported_at", "in_sala_noticed", "seen_on", "seen_cinema_id", "diary_exported",
+)
 
 
 def init_db() -> None:
@@ -35,8 +41,6 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN consecutive_missing_days INTEGER DEFAULT 0"))
             if "is_event" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN is_event BOOLEAN DEFAULT 0"))
-            if "letterboxd_exported" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN letterboxd_exported BOOLEAN DEFAULT 0"))
             if "tmdb_match_status" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN tmdb_match_status VARCHAR(20)"))
             if "tmdb_confidence" not in columns:
@@ -49,20 +53,10 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE films ADD COLUMN genre VARCHAR(50)"))
             if "details_tmdb_id" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN details_tmdb_id INTEGER"))
-            if "in_sala_noticed" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN in_sala_noticed BOOLEAN DEFAULT 0"))
-                # V films already in sala are not news: only the next arrivals get the notice
-                conn.execute(text("UPDATE films SET in_sala_noticed = 1 WHERE status = 'in_sala' AND vote = 'V'"))
             if "in_sala_pushed" not in columns:
                 conn.execute(text("ALTER TABLE films ADD COLUMN in_sala_pushed BOOLEAN DEFAULT 0"))
                 # Films already in sala are not news: only the next arrivals are notified
                 conn.execute(text("UPDATE films SET in_sala_pushed = 1 WHERE status = 'in_sala'"))
-            if "seen_on" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN seen_on DATE"))
-            if "seen_cinema_id" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN seen_cinema_id INTEGER REFERENCES cinemas(id)"))
-            if "diary_exported" not in columns:
-                conn.execute(text("ALTER TABLE films ADD COLUMN diary_exported BOOLEAN DEFAULT 0"))
             for name, kind in (
                 ("overview", "TEXT"),
                 ("director", "VARCHAR(300)"),
@@ -84,8 +78,16 @@ def init_db() -> None:
                 # Written and never read: "status" says it all. It must leave the table too,
                 # because it is NOT NULL and new films no longer set it
                 conn.execute(text("ALTER TABLE films DROP COLUMN in_theaters"))
-            # The X vote ("non mi interessa") no longer exists: those films go back to "da votare"
-            conn.execute(text("UPDATE films SET vote = NULL WHERE vote = 'X'"))
+            # What the removed local web app kept on each film (votes, Letterboxd export, "seen"
+            # details): the Flutter app keeps it in Firestore. The columns must leave the table,
+            # because some are NOT NULL and new films no longer set them. One that cannot be
+            # dropped (an old table with a foreign key on it) is nullable and just stays unused
+            for name in LEGACY_FILM_COLUMNS:
+                if name in columns:
+                    try:
+                        conn.execute(text(f"ALTER TABLE films DROP COLUMN {name}"))
+                    except OperationalError:
+                        pass
 
         if "showtimes" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("showtimes")}

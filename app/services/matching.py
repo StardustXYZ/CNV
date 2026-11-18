@@ -36,7 +36,6 @@ STATUS_MANUAL = "manuale"
 AUTO_MIN_SIMILARITY = 0.85  # below this the best candidate always goes to review
 AUTO_MIN_MARGIN = 0.08  # score gap required between best and runner-up
 NOT_FOUND_RETRY_DAYS = 7
-VOTE_PRIORITY = {"S": 3, "V": 2, "?": 1}  # which vote wins when two duplicates are merged
 MAX_RESULTS_PER_QUERY = 10
 MAX_CONSECUTIVE_API_ERRORS = 3
 
@@ -324,8 +323,7 @@ def _earliest(a: datetime | None, b: datetime | None) -> datetime | None:
 def merge_films(db: Session, survivor: Film, other: Film) -> None:
     """Move everything from ``other`` into ``survivor`` and delete ``other``.
 
-    Showtimes and daily snapshots are moved (duplicates collapsed), the user's vote is
-    kept, and other's titles become aliases of survivor so future scrapes land on it.
+    Showtimes and daily snapshots are moved (duplicates collapsed), and other's titles become aliases of survivor so future scrapes land on it.
     """
     db.flush()
 
@@ -377,11 +375,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
         else:
             db.add(FilmAlias(normalized_title=title, film_id=survivor.id))
 
-    # Film fields. Different votes on the two copies: keep the most interested one
-    # (seen over V, V over ?), so a "want to see" or a "seen" is never lost.
-    survivor.vote = max(
-        (v for v in (survivor.vote, other.vote) if v), key=lambda v: VOTE_PRIORITY.get(v, 0), default=None
-    )
+    # Film fields
     survivor.first_seen = _earliest(survivor.first_seen, other.first_seen)
     survivor.last_seen = _latest(survivor.last_seen, other.last_seen)
     if other.last_seen_date and (survivor.last_seen_date is None or other.last_seen_date > survivor.last_seen_date):
@@ -391,14 +385,7 @@ def merge_films(db: Session, survivor: Film, other: Film) -> None:
     )
     # Only an event if both copies were events: a regular run must not get the short threshold
     survivor.is_event = survivor.is_event and other.is_event
-    survivor.letterboxd_exported = survivor.letterboxd_exported or other.letterboxd_exported
-    survivor.in_sala_noticed = survivor.in_sala_noticed or other.in_sala_noticed  # notice seen on either copy
     survivor.in_sala_pushed = survivor.in_sala_pushed or other.in_sala_pushed  # notified for either copy
-    if survivor.vote == "S":
-        survivor.seen_on = survivor.seen_on or other.seen_on
-        survivor.seen_cinema_id = survivor.seen_cinema_id or other.seen_cinema_id
-        survivor.diary_exported = survivor.diary_exported or other.diary_exported
-    survivor.exported_at = _latest(survivor.exported_at, other.exported_at)
     if survivor.status != "uscito" or other.status != "uscito":
         # Still programmed somewhere: the sync recomputes the status right after
         survivor.left_theaters_date = None
@@ -533,7 +520,7 @@ async def match_pending_films(db: Session, searcher: MovieSearcher, today: date 
     """Match every film not yet checked (and retry old "non_trovato"), merging duplicates.
 
     Each film is saved right after its decision, so the database is never locked while
-    waiting for TMDB and the app can save votes during a sync.
+    waiting for TMDB and another process can still write to it during a sync.
     """
     today = today or date.today()
     now = datetime.now(timezone.utc)

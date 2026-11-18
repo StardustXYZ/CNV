@@ -196,7 +196,6 @@ async def test_film_no_cinema_took_leaves_after_the_threshold(db):
     batch = ComingSoonBatch("citrigno", [item("ICE CREAM MAN")], cinema_slug="citrigno")
     await sync(db, coming=[batch])
     film = db.query(Film).one()
-    film.vote = "V"
     assert film.last_announced_date == TODAY
 
     # Still announced ten days later: it is coming, whatever the wait
@@ -216,7 +215,6 @@ async def test_film_no_cinema_took_leaves_after_the_threshold(db):
     db.refresh(film)
     assert film.status == "uscito"
     assert film.left_theaters_date is None
-    assert film.vote == "V"
     assert any("Mai arrivato in sala" in c.details for c in res.status_changes if c.film_id == film.id)
 
     # Announced again: coming back
@@ -246,7 +244,7 @@ async def test_film_no_cinema_took_arrives_late_and_is_news(db):
 async def test_film_never_announced_since_the_update_counts_from_its_last_news(db):
     # Films from before last_announced_date existed: the day CNV last read about them
     film = Film(raw_title="MINOTAUR", normalized_title="minotaur", status="in_uscita",
-                first_seen=datetime(2026, 9, 1), last_seen=datetime(2026, 9, 1), vote="?")
+                first_seen=datetime(2026, 9, 1), last_seen=datetime(2026, 9, 1))
     db.add(film)
     db.commit()
     await sync(db)

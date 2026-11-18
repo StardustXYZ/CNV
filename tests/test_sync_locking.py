@@ -27,19 +27,19 @@ def db_file(tmp_path):
     engine = create_engine(f"sqlite:///{path.as_posix()}")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as s:
-        s.add(Film(raw_title="FILM VOTATO", normalized_title="film votato", status="in_sala"))
+        s.add(Film(raw_title="FILM SCRITTO", normalized_title="film scritto", status="in_sala"))
         s.commit()
     yield path, engine
     engine.dispose()
 
 
-def vote_from_the_web_app(path, outcomes: list[str]) -> None:
-    """What the vote button does, from another connection with a short wait."""
+def write_from_another_process(path, outcomes: list[str]) -> None:
+    """A write from another connection with a short wait (what the phone-side tools or a second process do)."""
     engine = create_engine(f"sqlite:///{path.as_posix()}", connect_args={"timeout": 1})
     try:
         with sessionmaker(bind=engine)() as s:
-            film = s.query(Film).filter_by(normalized_title="film votato").one()
-            film.vote = "V" if film.vote != "V" else "?"
+            film = s.query(Film).filter_by(normalized_title="film scritto").one()
+            film.in_sala_pushed = not film.in_sala_pushed
             s.commit()
         outcomes.append("ok")
     except Exception as err:  # noqa: BLE001 - recorded, asserted below
@@ -49,18 +49,18 @@ def vote_from_the_web_app(path, outcomes: list[str]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_votes_are_saved_while_the_sync_reads_websites_and_tmdb(db_file, monkeypatch):
+async def test_writes_are_saved_while_the_sync_reads_websites_and_tmdb(db_file, monkeypatch):
     path, engine = db_file
     outcomes: list[str] = []
 
     class SlowWebsite(BaseScraper):
         async def scrape(self):
-            vote_from_the_web_app(path, outcomes)  # the user votes while we wait on the site
+            write_from_another_process(path, outcomes)  # another process writes while we wait on the site
             return [ShowtimeData(self.cinema_slug, f"FILM {self.cinema_slug.upper()}", TODAY, time(21, 0))]
 
     class SlowTmdb:
         async def search_movies(self, query, year=None):
-            vote_from_the_web_app(path, outcomes)  # ...and while we wait on TMDB
+            write_from_another_process(path, outcomes)  # ...and while we wait on TMDB
             return [TmdbMovie(abs(hash(query)) % 10_000, query.title(), query.title(), TODAY, 1.0)]
 
     monkeypatch.setitem(sync_module.SCRAPER_REGISTRY, "slow", SlowWebsite)
