@@ -1,3 +1,5 @@
 # Abbinamenti a TMDB scelti a mano: titolo normalizzato del film -> id TMDB.
 # Si modifica con `python -m app.abbina`; il sync notturno li applica una volta sola.
-abbinamenti: {}
+abbinamenti:
+  look back: 1591675
+  stray kids world tour: 1795555
