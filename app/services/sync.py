@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 import logging
 import re
 
@@ -18,6 +18,7 @@ from app.scrapers.cosenzacinema import CosenzaCinemaScraper
 from app.scrapers.eighteen_tickets import EighteenTicketsScraper
 from app.scrapers.garden import CinemaGardenScraper
 from app.scrapers.stub import StubScraper
+from app.services.film_status import SyncChange, films_kept_by_failed_cinemas, has_event_keyword, update_statuses
 from app.services.matching import MatchReport, fill_film_details, match_pending_films
 from app.services.overrides import apply_overrides
 from app.services.schedule import show_datetime
@@ -72,43 +73,6 @@ def _resolve_cinema(name: str, configs: list[CinemaConfig], cinema_map: dict[str
         if wanted in {normalize_title(n) for n in (cfg.slug, cfg.name, *cfg.aliases)}:
             return cinema_map.get(cfg.slug)
     return None
-
-EVENT_KEYWORDS = ("evento", "film evento", "anteprima")
-
-
-EVENT_WINDOW_DAYS = 14  # shows older than this do not decide whether a film is an event now
-
-
-def has_event_keyword(text: str | None) -> bool:
-    lowered = (text or "").lower()
-    return any(kw in lowered for kw in EVENT_KEYWORDS)
-
-
-def is_event_film(film: Film, today: date | None = None) -> bool:
-    """Detect if a film is an event screening (threshold N=3 instead of 7).
-
-    A film is an event only if every one of its current shows is marked EVENTO,
-    film evento or ANTEPRIMA: a single preview before a regular run does not make
-    the whole film an event. With ``today`` only shows from the last 14 days and the
-    future count (falling back to all shows); without it, all shows count.
-    """
-    shows = list(film.showtimes)
-    if today is not None:
-        recent = [s for s in shows if s.date >= today - timedelta(days=EVENT_WINDOW_DAYS)]
-        shows = recent or shows
-    return bool(shows) and all(has_event_keyword(s.tags) for s in shows)
-
-
-@dataclass
-class SyncChange:
-    """Represents a significant change during a sync run."""
-
-    film_id: int
-    title: str
-    change_type: str  # "new_film", "status_change", "reappeared"
-    old_status: str | None = None
-    new_status: str | None = None
-    details: str = ""
 
 
 @dataclass
@@ -315,50 +279,16 @@ def _apply_coming_soon(
 # ------------------------------------------------------------------
 
 
-async def run_sync(
-    db: Session,
-    as_of_date: date | None = None,
-    cinemas: list[CinemaConfig] | None = None,
-    scraper_results: dict[str, list[ShowtimeData]] | None = None,
-    scraper_errors: dict[str, Exception] | None = None,
-    delay_between_cinemas: float = 0.5,
-    matcher: MovieSearcher | None = None,
-    coming_soon: list[ComingSoonBatch] | None = None,
-    coming_soon_sources: list[ComingSoonSourceConfig] | None = None,
-    local_now: datetime | None = None,
-) -> SyncResult:
-    """Run scrapers, update database, record snapshots, and transition film statuses.
+async def _read_programmes(
+    target_cinemas: list[CinemaConfig],
+    scraper_results: dict[str, list[ShowtimeData]] | None,
+    scraper_errors: dict[str, Exception] | None,
+    delay_between_cinemas: float,
+) -> tuple[dict[str, list[ShowtimeData]], dict[str, str]]:
+    """Network: read every cinema's programme (no database writes while waiting).
 
-    All the websites are read first and the database is written only afterwards, in a
-    short transaction: while the sync waits on the network the database stays free for other writers.
-
-    Args:
-        db: SQLAlchemy database session.
-        as_of_date: Reference current date (defaults to date.today()).
-        cinemas: Optional cinema list (defaults to settings.CINEMAS).
-        scraper_results: Optional pre-scraped data by cinema slug (used for tests/simulations).
-        scraper_errors: Optional injected scraper errors by cinema slug (used for tests).
-        delay_between_cinemas: Pause in seconds between cinema requests.
-        matcher: TMDB searcher (e.g. TmdbClient). When given, films not yet checked are
-            matched to TMDB and duplicates with the same TMDB id are merged.
-        coming_soon: Pre-read coming-soon lists (tests). When None they are fetched live,
-            but only if showtimes are fetched live too (``scraper_results`` is None).
-        coming_soon_sources: Multi-cinema coming-soon sites. Default: those in
-            cinemas.yaml when using the configured cinemas, none for a custom cinema list.
-        local_now: Local time used to tell started shows from upcoming ones. Default: now,
-            or the start of ``as_of_date`` when simulating another day.
-
-    Returns:
-        SyncResult detailing films, showtimes, status changes, and any errors.
+    Returns the shows by cinema slug and the error message of each cinema that failed.
     """
-    today = as_of_date or date.today()
-    now = datetime.now(timezone.utc)
-    if local_now is None:
-        local_now = datetime.now() if today == date.today() else datetime.combine(today, time.min)
-
-    target_cinemas = cinemas if cinemas is not None else settings.CINEMAS
-
-    # 1. Network: read every cinema's programme (no database writes while waiting)
     fetched: dict[str, list[ShowtimeData]] = {}
     fetch_errors: dict[str, str] = {}
     for idx, cfg in enumerate(target_cinemas):
@@ -380,21 +310,21 @@ async def run_sync(
             fetched[cfg.slug] = await scraper_cls(cinema_slug=cfg.slug, url=cfg.url).scrape()
         except Exception as err:
             fetch_errors[cfg.slug] = str(err) or err.__class__.__name__
+    return fetched, fetch_errors
 
-    # 1b. Network: coming-soon pages ("prossimamente") of each cinema and of multi-cinema sites
-    coming_errors: dict[str, str] = {}
-    if coming_soon is None and scraper_results is None:
-        if coming_soon_sources is None:
-            coming_soon_sources = settings.COMING_SOON_SOURCES if cinemas is None else []
-        coming_soon, coming_errors = await _fetch_coming_soon(
-            target_cinemas, coming_soon_sources, delay_between_cinemas
-        )
 
-    # From here on: database only
-    cinema_map: dict[str, Cinema] = {}
-    for cfg in target_cinemas:
-        cinema_map[cfg.slug] = _get_or_create_cinema(db, cfg)
-
+def _judge_cinemas(
+    db: Session,
+    target_cinemas: list[CinemaConfig],
+    cinema_map: dict[str, Cinema],
+    fetched: dict[str, list[ShowtimeData]],
+    fetch_errors: dict[str, str],
+    today: date,
+    now: datetime,
+    local_now: datetime,
+) -> tuple[dict[str, list[ShowtimeData]], set[str], dict[str, str]]:
+    """Record how each cinema went. Returns the shows of the cinemas that can be trusted,
+    the slugs of those that failed (their films are protected) and the errors by slug."""
     scraped_data: dict[str, list[ShowtimeData]] = {}
     failed_cinema_slugs: set[str] = set()
     sync_errors: dict[str, str] = {}
@@ -431,9 +361,30 @@ async def run_sync(
 
         scraped_data[cfg.slug] = items
         db.add(SyncRun(sync_date=today, cinema_id=cinema.id, status="ok", showtimes_count=len(items), created_at=now))
-    sync_errors.update(coming_errors)
+    return scraped_data, failed_cinema_slugs, sync_errors
 
-    # 2. Process showtimes for successful scrapers
+
+@dataclass
+class StoredShows:
+    """What storing the day's shows produced."""
+
+    seen_film_ids: set[int]
+    cinema_films: dict[int, dict[int, int]]  # cinema id -> film id -> number of shows today
+    new_films: list[Film]
+    changes: list[SyncChange]
+    processed: int
+    removed: int
+
+
+def _store_showtimes(
+    db: Session,
+    scraped_data: dict[str, list[ShowtimeData]],
+    cinema_map: dict[str, Cinema],
+    today: date,
+    now: datetime,
+    local_now: datetime,
+) -> StoredShows:
+    """Create or refresh the shows read today, and drop those the cinemas took off."""
     seen_film_ids_today: set[int] = set()
     cinema_films_today: dict[int, dict[int, int]] = {}
     new_films: list[Film] = []
@@ -536,26 +487,21 @@ async def run_sync(
         showtimes_removed += _remove_cancelled_showtimes(
             db, cinema.id, {show.id for show in listed_shows}, local_now
         )
-
     db.flush()
+    return StoredShows(
+        seen_film_ids=seen_film_ids_today,
+        cinema_films=cinema_films_today,
+        new_films=new_films,
+        changes=status_changes,
+        processed=total_showtimes_processed,
+        removed=showtimes_removed,
+    )
 
-    # 2b. Announced films: entries per cinema, new films for titles never seen
-    coming_counts: dict[str, int] = {}
-    if coming_soon:
-        announced, coming_counts = _apply_coming_soon(db, coming_soon, target_cinemas, cinema_map, today, now)
-        for film in announced:
-            new_films.append(film)
-            status_changes.append(
-                SyncChange(
-                    film_id=film.id,
-                    title=film.raw_title,
-                    change_type="new_film",
-                    new_status="in_uscita",
-                    details="Nuovo film annunciato (prossimamente)",
-                )
-            )
 
-    # 3. Record daily snapshots
+def _record_snapshots(
+    db: Session, cinema_films_today: dict[int, dict[int, int]], today: date, now: datetime
+) -> tuple[int, int]:
+    """Daily snapshots of what each cinema shows. Returns how many were created and updated."""
     snapshots_created = 0
     snapshots_updated = 0
     for cinema_id, film_counts in cinema_films_today.items():
@@ -590,8 +536,99 @@ async def run_sync(
                     )
                 )
                 snapshots_created += 1
-
     db.flush()
+    return snapshots_created, snapshots_updated
+
+
+async def run_sync(
+    db: Session,
+    as_of_date: date | None = None,
+    cinemas: list[CinemaConfig] | None = None,
+    scraper_results: dict[str, list[ShowtimeData]] | None = None,
+    scraper_errors: dict[str, Exception] | None = None,
+    delay_between_cinemas: float = 0.5,
+    matcher: MovieSearcher | None = None,
+    coming_soon: list[ComingSoonBatch] | None = None,
+    coming_soon_sources: list[ComingSoonSourceConfig] | None = None,
+    local_now: datetime | None = None,
+) -> SyncResult:
+    """Run scrapers, update database, record snapshots, and transition film statuses.
+
+    All the websites are read first and the database is written only afterwards, in a
+    short transaction: while the sync waits on the network the database stays free for other writers.
+
+    Args:
+        db: SQLAlchemy database session.
+        as_of_date: Reference current date (defaults to date.today()).
+        cinemas: Optional cinema list (defaults to settings.CINEMAS).
+        scraper_results: Optional pre-scraped data by cinema slug (used for tests/simulations).
+        scraper_errors: Optional injected scraper errors by cinema slug (used for tests).
+        delay_between_cinemas: Pause in seconds between cinema requests.
+        matcher: TMDB searcher (e.g. TmdbClient). When given, films not yet checked are
+            matched to TMDB and duplicates with the same TMDB id are merged.
+        coming_soon: Pre-read coming-soon lists (tests). When None they are fetched live,
+            but only if showtimes are fetched live too (``scraper_results`` is None).
+        coming_soon_sources: Multi-cinema coming-soon sites. Default: those in
+            cinemas.yaml when using the configured cinemas, none for a custom cinema list.
+        local_now: Local time used to tell started shows from upcoming ones. Default: now,
+            or the start of ``as_of_date`` when simulating another day.
+
+    Returns:
+        SyncResult detailing films, showtimes, status changes, and any errors.
+    """
+    today = as_of_date or date.today()
+    now = datetime.now(timezone.utc)
+    if local_now is None:
+        local_now = datetime.now() if today == date.today() else datetime.combine(today, time.min)
+
+    target_cinemas = cinemas if cinemas is not None else settings.CINEMAS
+
+    # 1. Network: the cinemas' programmes
+    fetched, fetch_errors = await _read_programmes(target_cinemas, scraper_results, scraper_errors, delay_between_cinemas)
+
+    # 1b. Network: coming-soon pages ("prossimamente") of each cinema and of multi-cinema sites
+    coming_errors: dict[str, str] = {}
+    if coming_soon is None and scraper_results is None:
+        if coming_soon_sources is None:
+            coming_soon_sources = settings.COMING_SOON_SOURCES if cinemas is None else []
+        coming_soon, coming_errors = await _fetch_coming_soon(
+            target_cinemas, coming_soon_sources, delay_between_cinemas
+        )
+
+    # From here on: database only
+    cinema_map: dict[str, Cinema] = {}
+    for cfg in target_cinemas:
+        cinema_map[cfg.slug] = _get_or_create_cinema(db, cfg)
+
+    scraped_data, failed_cinema_slugs, sync_errors = _judge_cinemas(
+        db, target_cinemas, cinema_map, fetched, fetch_errors, today, now, local_now
+    )
+    sync_errors.update(coming_errors)
+
+    # 2. Process showtimes for successful scrapers
+    stored = _store_showtimes(db, scraped_data, cinema_map, today, now, local_now)
+    seen_film_ids_today = stored.seen_film_ids
+    new_films = stored.new_films
+    status_changes = stored.changes
+
+    # 2b. Announced films: entries per cinema, new films for titles never seen
+    coming_counts: dict[str, int] = {}
+    if coming_soon:
+        announced, coming_counts = _apply_coming_soon(db, coming_soon, target_cinemas, cinema_map, today, now)
+        for film in announced:
+            new_films.append(film)
+            status_changes.append(
+                SyncChange(
+                    film_id=film.id,
+                    title=film.raw_title,
+                    change_type="new_film",
+                    new_status="in_uscita",
+                    details="Nuovo film annunciato (prossimamente)",
+                )
+            )
+
+    # 3. Record daily snapshots
+    snapshots_created, snapshots_updated = _record_snapshots(db, stored.cinema_films, today, now)
 
     # 3b. TMDB matching: link new films to TMDB and merge duplicates before computing statuses
     match_report: MatchReport | None = None
@@ -610,172 +647,22 @@ async def run_sync(
             new_films = [f for f, fid in zip(new_films, new_film_ids) if fid not in merges]
             status_changes = [c for c in status_changes if c.film_id not in merges]
 
-    # Films protected by a cinema that failed today: those present in that cinema's
-    # latest recorded snapshot, i.e. its programming as last seen before the failure.
-    # Films that had already left that cinema earlier are not protected, and the
-    # protection ends when the cinema has been failing for longer than the "uscito"
-    # threshold: a site broken for good must not keep its films in theaters forever.
-    protected_film_ids: set[int] = set()
-    for slug in failed_cinema_slugs:
-        cinema_id = cinema_map[slug].id
-        last_snap_date = (
-            db.query(func.max(DailySnapshot.sync_date))
-            .filter(DailySnapshot.cinema_id == cinema_id, DailySnapshot.sync_date <= today)
-            .scalar()
-        )
-        if last_snap_date is None or (today - last_snap_date).days > settings.SYNC_DAYS_TO_USCITO:
-            continue
-        protected_film_ids.update(
-            film_id
-            for (film_id,) in db.query(DailySnapshot.film_id).filter_by(cinema_id=cinema_id, sync_date=last_snap_date)
-        )
-
-    # Films announced by some cinema: they are coming back, so never "uscito"
-    announced_film_ids = {film_id for (film_id,) in db.query(ComingSoon.film_id).distinct()}
-
-    # 4. Status Determination for all films
-    for film in db.query(Film).all():
-        old_status = film.status
-        seen_today = film.id in seen_film_ids_today
-        is_protected_by_failed_cinema = not seen_today and film.id in protected_film_ids
-
-        # Event threshold, recomputed every sync from the current shows
-        film_is_event = is_event_film(film, today=today)
-        film.is_event = film_is_event
-        threshold = settings.SYNC_DAYS_TO_USCITO_EVENTO if film_is_event else settings.SYNC_DAYS_TO_USCITO
-
-        # Update missing days based on calendar dates (difference between today and last seen date)
-        if seen_today:
-            film.last_seen_date = today
-            film.consecutive_missing_days = 0
-        elif is_protected_by_failed_cinema:
-            # Not counted as missing, but not seen either: last_seen_date stays the real one
-            film.consecutive_missing_days = 0
-        else:
-            last_d = film.last_seen_date
-            if last_d is None:
-                snap_date = (
-                    db.query(func.max(DailySnapshot.sync_date))
-                    .filter(DailySnapshot.film_id == film.id)
-                    .scalar()
-                )
-                last_d = snap_date or (film.last_seen.date() if film.last_seen else today)
-                film.last_seen_date = last_d
-
-            days_diff = max(0, (today - last_d).days)
-            film.consecutive_missing_days = days_diff
-
-        # Dates analysis: only recent and upcoming shows decide, not those of months ago
-        all_dates = [s.date for s in film.showtimes]
-        future_dates = [d for d in all_dates if d > today]
-        shown_recently = any(today - timedelta(days=threshold) <= d <= today for d in all_dates)
-
-        never_announced_for = 0
-        if not all_dates and film.id not in announced_film_ids:
-            # Announced but never screened, and no cinema announces it any more: when that
-            # lasts as long as the usual threshold, no cinema took it and it leaves too
-            last_news = film.last_announced_date or (film.last_seen or film.first_seen or now).date()
-            never_announced_for = max(0, (today - last_news).days)
-
-        if not all_dates and never_announced_for >= threshold:
-            target_status = "uscito"
-        elif not all_dates or (future_dates and not shown_recently):
-            # Only future shows: presale, or back in programme after a while
-            target_status = "in_uscita"
-        elif film.consecutive_missing_days >= threshold:
-            # Gone from the programmes, but if a cinema announces it again it is coming back
-            target_status = "in_uscita" if film.id in announced_film_ids else "uscito"
-        else:
-            # Tolerates gaps: remains in_sala as long as missing < threshold
-            target_status = "in_sala"
-
-        if target_status != "in_sala":
-            # If it comes back to theaters, that is news again (phone notification)
-            film.in_sala_pushed = False
-
-        # Apply state transitions
-        if old_status == "uscito" and target_status == "in_sala":
-            # Reappeared after being marked uscito
-            film.status = "in_sala"
-            film.left_theaters_date = None
-            status_changes.append(
-                SyncChange(
-                    film_id=film.id,
-                    title=film.raw_title,
-                    change_type="reappeared",
-                    old_status="uscito",
-                    new_status="in_sala",
-                    details="Film ricomparso in sala (data uscita azzerata)",
-                )
-            )
-        elif target_status == "uscito":
-            film.status = "uscito"
-            if film.left_theaters_date is None and all_dates:
-                # The day of its last screening, not the day CNV noticed (a week later).
-                # Never screened: no such day, it never arrived in theaters
-                past_dates = [d for d in all_dates if d <= today]
-                film.left_theaters_date = max(past_dates, default=film.last_seen_date or today)
-            if old_status != "uscito":
-                status_changes.append(
-                    SyncChange(
-                        film_id=film.id,
-                        title=film.raw_title,
-                        change_type="status_change",
-                        old_status=old_status,
-                        new_status="uscito",
-                        details=(
-                            f"Non presente da {film.consecutive_missing_days} giorni (soglia={threshold})"
-                            if all_dates
-                            else f"Mai arrivato in sala, non più annunciato da {never_announced_for} giorni"
-                        ),
-                    )
-                )
-        elif target_status == "in_sala":
-            film.status = "in_sala"
-            if old_status != "in_sala":
-                status_changes.append(
-                    SyncChange(
-                        film_id=film.id,
-                        title=film.raw_title,
-                        change_type="status_change",
-                        old_status=old_status,
-                        new_status="in_sala",
-                        details="Film ora in programmazione nelle sale",
-                    )
-                )
-        elif target_status == "in_uscita":
-            film.status = "in_uscita"
-            film.left_theaters_date = None
-            if old_status != "in_uscita":
-                status_changes.append(
-                    SyncChange(
-                        film_id=film.id,
-                        title=film.raw_title,
-                        change_type="status_change",
-                        old_status=old_status,
-                        new_status="in_uscita",
-                        details=(
-                            "Spettacoli solo futuri (prevendita o correzione data)"
-                            if all_dates and min(all_dates) > today
-                            else f"Torna in programmazione dal {min(future_dates):%d/%m}"
-                            if future_dates
-                            else "Non più in programmazione ma annunciato di nuovo (prossimamente)"
-                        ),
-                    )
-                )
+    # 4. Status determination for all films
+    protected_ids = films_kept_by_failed_cinemas(db, failed_cinema_slugs, cinema_map, today)
+    status_changes += update_statuses(db, today, now, seen_film_ids_today, protected_ids)
 
     db.commit()
 
     total_films_count = db.query(Film).count()
     return SyncResult(
         films=total_films_count,
-        showtimes=total_showtimes_processed,
+        showtimes=stored.processed,
         new_films=new_films,
         status_changes=status_changes,
         errors=sync_errors,
         snapshots_created=snapshots_created,
         snapshots_updated=snapshots_updated,
-        showtimes_removed=showtimes_removed,
+        showtimes_removed=stored.removed,
         matching=match_report,
         coming_soon=coming_counts,
     )

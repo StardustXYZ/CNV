@@ -8,7 +8,8 @@ import pytest
 from app.config import CinemaConfig
 from app.db.models import Cinema, DailySnapshot, Film, Showtime, SyncRun
 from app.scrapers.base import ShowtimeData
-from app.services.sync import SyncResult, is_event_film, normalize_title, run_sync
+from app.services.film_status import is_event_film
+from app.services.sync import SyncResult, normalize_title, run_sync
 
 
 def test_normalize_basic():
