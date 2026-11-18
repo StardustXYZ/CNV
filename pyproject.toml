@@ -4,21 +4,20 @@ version = "0.1.0"
 description = "Cinema tracker for Cosenza/Rende – track screenings, vote, export to Letterboxd"
 requires-python = ">=3.11"
 dependencies = [
-    "sqlalchemy>=2.0",
-    "httpx>=0.25",
-    "beautifulsoup4>=4.12",
-    "pyyaml>=6.0",
-    "python-dotenv>=1.0",
+    "sqlalchemy>=2.0,<3",
+    "httpx>=0.25,<1",
+    "beautifulsoup4>=4.12,<5",
+    "pyyaml>=6.0,<7",
+    "python-dotenv>=1.0,<2",
 ]
 
 [project.optional-dependencies]
 push = [
-    "firebase-admin>=6.5",  # notifications to the Android app (FCM), sent by GitHub Actions (app/push.py)
+    "firebase-admin>=6.5,<8",  # notifications to the Android app (FCM), sent by GitHub Actions (app/push.py)
 ]
 dev = [
-    "pytest>=7.4",
-    "pytest-asyncio>=0.23",
-    "httpx",
+    "pytest>=7.4,<10",
+    "pytest-asyncio>=0.23,<2",
 ]
 
 [build-system]
