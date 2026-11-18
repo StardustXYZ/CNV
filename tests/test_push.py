@@ -26,7 +26,14 @@ def test_prepare_notifies_each_new_film_once(db):
     db.commit()
 
     payload = push.prepare(db)
-    assert payload == {"films": [{"id": clay.id, "title": "Clayface"}, {"id": hope.id, "title": "Hope"}], "more": 0}
+    assert payload == {
+        "films": [{"id": clay.id, "title": "Clayface"}, {"id": hope.id, "title": "Hope"}],
+        "more": 0,
+        "ids": [clay.id, hope.id],
+    }
+    assert not hope.in_sala_pushed and not clay.in_sala_pushed  # marked only once the news went out
+    assert push.prepare(db) == payload  # a night that failed announces them again
+    assert push.mark_notified(db, payload["ids"]) == 2
     assert hope.in_sala_pushed and clay.in_sala_pushed
     assert push.prepare(db) == {}  # nothing new the next night
     assert push.prepare(db, test=True)["title"] == "CNV"  # manual run with "prova"
@@ -65,6 +72,7 @@ def test_prepare_keeps_the_message_small(db):
     db.commit()
     payload = push.prepare(db)
     assert len(payload["films"]) == push.MAX_FILMS and payload["more"] == 3
+    assert len(payload["ids"]) == push.MAX_FILMS + 3  # all of them get marked, not only the listed ones
     assert len(json.dumps(payload).encode()) < 3000
 
 
@@ -201,11 +209,58 @@ def test_send_command_without_firebase_secret(tmp_path, monkeypatch, capsys):
     assert "manca il segreto FIREBASE_SERVICE_ACCOUNT" in capsys.readouterr().out
 
 
-def test_send_command_reports_firebase_problems_without_failing(tmp_path, monkeypatch, capsys):
+def _session_with_new_film(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.models import Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'cnv.db'}")
+    Base.metadata.create_all(engine)
+    make_session = sessionmaker(bind=engine)
+    with make_session() as db:
+        new = film(db, "Hope")
+        db.commit()
+        film_id = new.id
+    monkeypatch.setattr(push, "SessionLocal", make_session)
+    monkeypatch.setattr(push, "init_db", lambda: None)
+    return engine, make_session, film_id
+
+
+def test_send_command_failure_fails_the_step_and_keeps_films_unmarked(tmp_path, monkeypatch, capsys):
+    engine, make_session, film_id = _session_with_new_film(tmp_path, monkeypatch)
     message = tmp_path / "notifica.json"
-    message.write_text(json.dumps(NEWS), encoding="utf-8")
+    message.write_text(json.dumps({**NEWS, "ids": [film_id]}), encoding="utf-8")
     monkeypatch.setenv("FIREBASE_SERVICE_ACCOUNT", "{non valido")
     monkeypatch.setattr(push, "FirebaseClient", lambda secret: (_ for _ in ()).throw(ValueError("chiave non valida")))
     monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
+    assert push.main() == 1
+    assert "::error::Notifiche dell'app non inviate (riprovo al prossimo giro): chiave non valida" in capsys.readouterr().out
+    with make_session() as db:
+        assert db.get(Film, film_id).in_sala_pushed is False  # announced again next time
+    engine.dispose()
+
+
+def test_send_command_marks_the_films_once_sent(tmp_path, monkeypatch, capsys):
+    engine, make_session, film_id = _session_with_new_film(tmp_path, monkeypatch)
+    message = tmp_path / "notifica.json"
+    message.write_text(json.dumps({**NEWS, "ids": [film_id]}), encoding="utf-8")
+    monkeypatch.setenv("FIREBASE_SERVICE_ACCOUNT", "{}")
+    monkeypatch.setattr(push, "FirebaseClient", lambda secret: FakeFirebase())
+    monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
     assert push.main() == 0
-    assert "::warning::Notifiche dell'app non inviate: chiave non valida" in capsys.readouterr().out
+    with make_session() as db:
+        assert db.get(Film, film_id).in_sala_pushed is True
+    engine.dispose()
+
+
+def test_send_command_without_secret_still_marks_the_films(tmp_path, monkeypatch, capsys):
+    engine, make_session, film_id = _session_with_new_film(tmp_path, monkeypatch)
+    message = tmp_path / "notifica.json"
+    message.write_text(json.dumps({**NEWS, "ids": [film_id]}), encoding="utf-8")
+    monkeypatch.delenv("FIREBASE_SERVICE_ACCOUNT", raising=False)
+    monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
+    assert push.main() == 0  # turning notifications on later must not bring old news
+    with make_session() as db:
+        assert db.get(Film, film_id).in_sala_pushed is True
+    engine.dispose()

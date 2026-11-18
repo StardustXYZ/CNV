@@ -5,11 +5,13 @@ GitHub Actions runs this after the nightly sync, in two steps:
     python -m app.push prepare --out notifica.json [--prova]
     python -m app.push send notifica.json
 
-``prepare`` picks the films that became "in sala" since the last notification, marks
-them and writes the message; ``send`` delivers it, once the site is published, to the
-Android app (Firebase Cloud Messaging): every admitted account that turned notifications
-on gets them on its phones, with its V films first (or only those, if it chose so). A
-film whose first show is that very day "esce oggi".
+``prepare`` picks the films that became "in sala" since the last notification and writes
+the message; ``send`` delivers it, once the site is published, to the Android app
+(Firebase Cloud Messaging): every admitted account that turned notifications on gets them
+on its phones, with its V films first (or only those, if it chose so). A film whose first
+show is that very day "esce oggi". Only after a successful ``send`` (or without the
+secret) the films are marked as notified in the database; if ``send`` fails it exits with
+an error and they are announced again at the next run.
 
 ``prepare`` also writes in the log the films in their last days (app/services/last_days.py)
 and keeps the guesses, without notifying them yet: ``python -m app.push verifica``
@@ -48,16 +50,14 @@ def new_in_sala(db: Session) -> list[Film]:
 
 
 def prepare(db: Session, test: bool = False, today: date | None = None) -> dict:
-    """The message for the films new in theaters (empty: nothing to say). Marks them as notified.
+    """The message for the films new in theaters (empty: nothing to say).
 
-    They are marked even when notifications are not set up, so turning them on later does
-    not bring a flood of old news. Films shown for the first time today get "today".
+    Does not mark them: ``send`` does, once the news has really gone out (``mark_notified``),
+    so a failed night does not swallow them. "ids" lists all of them, also the ones the
+    message only counts. Films shown for the first time today get "today".
     """
     today = today or date.today()
     films = new_in_sala(db)
-    for film in films:
-        film.in_sala_pushed = True
-    db.commit()
     if films:
         first_day = dict(
             db.query(Showtime.film_id, func.min(Showtime.date))
@@ -70,10 +70,22 @@ def prepare(db: Session, test: bool = False, today: date | None = None) -> dict:
                 for f in films[:MAX_FILMS]
             ],
             "more": max(0, len(films) - MAX_FILMS),
+            "ids": [f.id for f in films],
         }
     if test:
         return {"title": "CNV", "body": "Le notifiche funzionano: ti scrivo quando un film nuovo arriva in sala."}
     return {}
+
+
+def mark_notified(db: Session, ids: list[int]) -> int:
+    """Mark the films as notified, so they are not announced again. Returns how many."""
+    if not ids:
+        return 0
+    films = db.query(Film).filter(Film.id.in_(ids)).all()
+    for film in films:
+        film.in_sala_pushed = True
+    db.commit()
+    return len(films)
 
 
 # ---------------------------------------------------------------------- Android app (FCM)
@@ -273,17 +285,25 @@ def main() -> int:
 
     service_account = os.getenv("FIREBASE_SERVICE_ACCOUNT", "")
     if not service_account:
+        # Marked anyway: turning notifications on later must not bring a flood of old news
         print("App Android: notifiche non attive, manca il segreto FIREBASE_SERVICE_ACCOUNT")
     else:
         try:
             counts = send_fcm(payload, FirebaseClient(service_account))
-        except Exception as err:  # the site is published anyway: report and go on
-            print(f"::warning::Notifiche dell'app non inviate: {err}")
-        else:
-            print(
-                f"App Android: {counts['sent']} notifiche consegnate a {counts['accounts']} account "
-                f"({counts['removed']} telefoni non più raggiungibili tolti, {counts['errors']} errori)"
-            )
+        except Exception as err:
+            # The films stay unmarked: the next night announces them again. The site is
+            # already published, but the step fails so that the problem is seen.
+            print(f"::error::Notifiche dell'app non inviate (riprovo al prossimo giro): {err}")
+            return 1
+        print(
+            f"App Android: {counts['sent']} notifiche consegnate a {counts['accounts']} account "
+            f"({counts['removed']} telefoni non più raggiungibili tolti, {counts['errors']} errori)"
+        )
+    ids = payload.get("ids") or []
+    if ids:
+        init_db()
+        with SessionLocal() as db:
+            print(f"Film segnati come notificati: {mark_notified(db, ids)}")
     return 0
 
 

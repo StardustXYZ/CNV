@@ -8,7 +8,7 @@ import pytest
 from app.config import CinemaConfig
 from app.db.models import Cinema, DailySnapshot, Film, Showtime, SyncRun
 from app.scrapers.base import ShowtimeData
-from app.services.sync import is_event_film, normalize_title, run_sync
+from app.services.sync import SyncResult, is_event_film, normalize_title, run_sync
 
 
 def test_normalize_basic():
@@ -976,3 +976,15 @@ def test_cinemas_not_updated(db):
     assert [(c.slug, d) for c, d in cinemas_not_updated(db)] == [
         ("broken", day - timedelta(days=2)), ("empty", None), ("never", None),
     ]
+
+
+def test_all_cinemas_failed_only_when_no_cinema_was_read():
+    from app import sync as sync_cli
+    from app.config import settings
+
+    slugs = [cfg.slug for cfg in settings.CINEMAS]
+    assert len(slugs) > 1
+    assert sync_cli.all_cinemas_failed(SyncResult(errors={s: "timeout" for s in slugs})) is True
+    assert sync_cli.all_cinemas_failed(SyncResult(errors={slugs[0]: "timeout"})) is False  # one site down
+    assert sync_cli.all_cinemas_failed(SyncResult(errors={"cosenzacinema (prossimamente)": "x"})) is False
+    assert sync_cli.all_cinemas_failed(SyncResult()) is False

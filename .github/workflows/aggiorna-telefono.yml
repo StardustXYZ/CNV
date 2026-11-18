@@ -5,6 +5,9 @@
 # 3. fa il sync: siti dei cinema, prossimamente, TMDB, stati dei film
 # 4. salva il database nel ramo "dati" (un solo commit, sovrascritto ogni volta)
 # 5. pubblica su GitHub Pages l'app per il browser con data.json, che legge anche l'app Android
+# 6. manda le notifiche; solo se l'invio riesce segna i film come notificati e salva di nuovo il database
+#
+# Se nessun cinema si lascia leggere il sync fallisce e il sito resta quello di ieri.
 #
 # Serve: repository pubblico, segreto TMDB_API_KEY, Settings -> Pages -> Source: GitHub Actions.
 # Notifiche dell'app Android (facoltative): segreto FIREBASE_SERVICE_ACCOUNT (la chiave JSON
@@ -95,16 +98,12 @@ jobs:
       - name: Prepara la notifica (film nuovi in sala)
         run: python -m app.push prepare --out "$RUNNER_TEMP/notifica.json" ${{ inputs.prova && '--prova' || '' }}
 
+      # Prima della pubblicazione: gli id dei film nuovi finiscono sul sito, quindi devono
+      # essere già salvati (altrimenti i voti del telefono andrebbero su altri film)
       - name: Salva il database nel ramo dati
-        run: |
-          cp dati/cnv.db "$RUNNER_TEMP/cnv.db"
-          cd "$RUNNER_TEMP"
-          mkdir ramo-dati && mv cnv.db ramo-dati/ && cd ramo-dati
-          git init --quiet --initial-branch=dati
-          git add cnv.db
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit --quiet -m "Database CNV del $(date +%d/%m/%Y)"
-          git push --quiet --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" dati
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/salva-database.sh
 
       - name: Costruisci il sito (app per il browser e dati)
         run: python -m app.export_static --out site
@@ -124,6 +123,13 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: python -m app.push send "$RUNNER_TEMP/notifica.json"
+
+      # I film notificati si segnano solo ora, a invio riuscito: se l'invio fallisce il passo
+      # è rosso, qui non si arriva, e al prossimo giro gli stessi film vengono annunciati
+      - name: Salva i film notificati nel ramo dati
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/salva-database.sh
 
       # In un repository pubblico GitHub mette in pausa gli orari programmati dopo 60 giorni
       # senza attività. Riattivare il workflow a ogni giro azzera il conto: non serve

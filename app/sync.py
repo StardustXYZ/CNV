@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+import os
 import sys
 
 from app.config import settings
@@ -55,6 +56,8 @@ async def main_async() -> SyncResult:
             print("\n[!] Errori riscontrati durante lo scraping:")
             for slug, err in result.errors.items():
                 print(f"  * {slug}: {err}")
+                if os.getenv("GITHUB_ACTIONS"):  # shown as a warning on the run page
+                    print(f"::warning::Sync, {slug}: {err}")
         else:
             print("\n[OK] Tutti gli scraper hanno completato con successo.")
 
@@ -139,8 +142,18 @@ def _print_matching(report: MatchReport) -> None:
         print("\nNessun film nuovo da abbinare.")
 
 
+def all_cinemas_failed(result: SyncResult) -> bool:
+    """True when no cinema could be read: nothing new was learned, whatever the cause."""
+    return bool(settings.CINEMAS) and all(cfg.slug in result.errors for cfg in settings.CINEMAS)
+
+
 def main() -> None:
-    asyncio.run(main_async())
+    result = asyncio.run(main_async())
+    if all_cinemas_failed(result):
+        # One site down is a warning (its films are kept for up to 7 days); all of them is
+        # a problem to look at, and the night must not look successful.
+        print("::error::Nessun cinema è stato letto: controlla i siti (python -m app.check_sites).")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
