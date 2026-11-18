@@ -47,3 +47,7 @@ firebase/*-debug.log
 mobile/android/key.properties
 *.jks
 *.keystore
+
+# Claude Code and graphify
+.claude/
+graphify-out/
