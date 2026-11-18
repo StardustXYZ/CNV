@@ -59,10 +59,14 @@ service cloud.firestore {
       return d.keys().hasOnly(['admin', 'email']) && d.email is list && d.email.size() <= 100;
     }
 
-    // The same shape as the copy of the votes: maps by film code, plus when it was saved
+    // The same shape as the copy of the votes: maps by film code, plus when it was saved.
+    // The rules check the whole document that results from a write: a vote that is not
+    // V, ? or S (✓), once stored, would make every later write of that account fail.
+    // The values of the other maps cannot be checked one by one: the rules have no loop
     function validPersonal(p) {
       return p.keys().hasOnly(['votes', 'seen', 'exported', 'diary', 'updated', 'notify'])
-        && (!('votes' in p) || (p.votes is map && p.votes.size() <= 5000))
+        && (!('votes' in p) || (p.votes is map && p.votes.size() <= 5000
+            && p.votes.values().hasOnly(['V', '?', 'S'])))
         && (!('seen' in p) || (p.seen is map && p.seen.size() <= 5000))
         && (!('exported' in p) || (p.exported is map && p.exported.size() <= 5000))
         && (!('diary' in p) || (p.diary is map && p.diary.size() <= 5000))

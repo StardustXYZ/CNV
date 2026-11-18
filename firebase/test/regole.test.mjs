@@ -129,3 +129,17 @@ test("le altre raccolte sono chiuse a tutti", async () => {
     await assertFails(setDoc(doc(as("capo"), "utenti/capo/sotto/x"), { a: 1 }));
     await assertFails(setDoc(doc(as("capo"), "utenti/capo/telefoni/abcdefgh/altro/x"), { a: 1 }));
 });
+
+test("i voti possono essere solo V, ? o ✓", async () => {
+    const db = as("amico");
+    const ref = doc(db, "utenti/amico");
+    await assertSucceeds(setDoc(ref, { votes: { 1: "V", 2: "?", 3: "S" }, updated: serverTimestamp() }));
+    await assertSucceeds(setDoc(ref, { votes: {}, updated: serverTimestamp() }));
+    await assertSucceeds(setDoc(ref, { updated: serverTimestamp() })); // no votes at all
+    await assertFails(setDoc(ref, { votes: { 1: "X" }, updated: serverTimestamp() })); // the old "non mi interessa"
+    await assertFails(setDoc(ref, { votes: { 1: "V", 2: "voglio" }, updated: serverTimestamp() }));
+    await assertFails(setDoc(ref, { votes: { 1: 5 }, updated: serverTimestamp() }));
+    // the app writes entry by entry, merging: the result is what counts
+    await assertSucceeds(setDoc(ref, { votes: { 7: "V" } }, { merge: true }));
+    await assertFails(setDoc(ref, { votes: { 8: "Q" } }, { merge: true }));
+});
