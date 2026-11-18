@@ -19,6 +19,7 @@ from app.scrapers.eighteen_tickets import EighteenTicketsScraper
 from app.scrapers.garden import CinemaGardenScraper
 from app.scrapers.stub import StubScraper
 from app.services.matching import MatchReport, fill_film_details, match_pending_films
+from app.services.overrides import apply_overrides
 from app.services.schedule import show_datetime
 from app.services.tmdb import MovieSearcher
 from app.services.titles import normalize_title
@@ -599,6 +600,7 @@ async def run_sync(
         # Save before talking to TMDB: the database must not stay locked during the requests
         db.commit()
         match_report = await match_pending_films(db, matcher, today=today)
+        await apply_overrides(db, matcher, report=match_report)  # matches chosen by hand (config/abbinamenti.yaml)
         if hasattr(matcher, "get_movie"):
             # Runtime and genre, for the end time of the shows
             match_report.details_filled = await fill_film_details(db, matcher, match_report)

@@ -1,0 +1,3 @@
+# Abbinamenti a TMDB scelti a mano: titolo normalizzato del film -> id TMDB.
+# Si modifica con `python -m app.abbina`; il sync notturno li applica una volta sola.
+abbinamenti: {}
