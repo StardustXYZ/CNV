@@ -49,7 +49,8 @@ async def apply_overrides(
     """Give each film listed in the file the TMDB match chosen by hand. Returns how many changed.
 
     A film already matched by hand to that id is left alone. Duplicates that become the same
-    film are merged, and recorded in ``report.merges`` like the automatic matching does.
+    film are merged, and recorded in ``report.merges`` like the automatic matching does. An
+    entry that fails is logged and skipped.
     """
     overrides = load_overrides() if overrides is None else overrides
     if not overrides or not hasattr(tmdb, "get_movie"):
@@ -66,16 +67,21 @@ async def apply_overrides(
             if movie is None:
                 logger.warning("Abbinamento a mano di %s: il film TMDB %s non esiste", title, wanted)
                 continue
-            before = {row[0] for row in db.query(Film.id)}
+            before = dict(db.query(Film.id, Film.raw_title))
             survivor = confirm_match(db, film, movie)
             db.commit()
-        except httpx.HTTPError as err:
+        except Exception as err:
+            # Like the automatic matching: one bad entry must not stop the night's sync, which
+            # would otherwise fail again every night while the file keeps the entry
             db.rollback()
-            logger.warning("Abbinamento a mano di %s non riuscito: %s", title, err.__class__.__name__)
+            if isinstance(err, httpx.HTTPError):
+                logger.warning("Abbinamento a mano di %s non riuscito: %s", title, err.__class__.__name__)
+            else:
+                logger.exception("Errore imprevisto nell'abbinamento a mano di %s", title)
             continue
         applied += 1
         if report is not None:
-            for gone in before - {row[0] for row in db.query(Film.id)}:
+            for gone in before.keys() - {row[0] for row in db.query(Film.id)}:
                 report.merges[gone] = survivor.id
-                report.merged_titles.append((title, survivor.raw_title))
+                report.merged_titles.append((before[gone], survivor.raw_title))
     return applied

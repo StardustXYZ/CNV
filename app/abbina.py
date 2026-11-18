@@ -18,8 +18,10 @@ import argparse
 import asyncio
 from datetime import date
 from pathlib import Path
+import queue
 import sys
 import tempfile
+import threading
 
 import httpx
 from sqlalchemy import create_engine
@@ -29,11 +31,12 @@ from app.config import settings
 from app.db.models import Film
 from app.services.matching import STATUS_NOT_FOUND, STATUS_REVIEW, ScoredCandidate, search_manual
 from app.services.overrides import OVERRIDES_PATH, save_override
-from app.services.tmdb import TmdbClient
+from app.services.tmdb import TmdbClient, TmdbMovie
 
 DATABASE_URL = "https://raw.githubusercontent.com/StardustXYZ/CNV/dati/cnv.db"
 REVIEW_STATUSES = (STATUS_REVIEW, STATUS_NOT_FOUND)
 MAX_CANDIDATES = 8
+ESC = chr(92)  # escape character of the title search
 
 
 def fetch_database(dest: Path | None = None) -> Path:
@@ -49,6 +52,12 @@ def open_database(path: Path) -> Session:
     return Session(create_engine(f"sqlite:///{path.as_posix()}"))
 
 
+def close_database(db: Session) -> None:
+    engine = db.get_bind()
+    db.close()
+    engine.dispose()
+
+
 def films_to_review(db: Session) -> list[Film]:
     return (
         db.query(Film)
@@ -59,10 +68,12 @@ def films_to_review(db: Session) -> list[Film]:
 
 
 def find_films(db: Session, text: str) -> list[Film]:
-    like = f"%{text.strip().lower()}%"
+    # % and _ typed in the box are letters to look for, not wildcards
+    escaped = text.strip().lower().replace(ESC, ESC + ESC).replace("%", ESC + "%").replace("_", ESC + "_")
+    like = f"%{escaped}%"
     return (
         db.query(Film)
-        .filter(Film.raw_title.ilike(like) | Film.tmdb_title.ilike(like))
+        .filter(Film.raw_title.ilike(like, escape=ESC) | Film.tmdb_title.ilike(like, escape=ESC))
         .order_by(Film.raw_title)
         .all()
     )
@@ -85,6 +96,14 @@ async def search(query: str) -> list[ScoredCandidate]:
         return (await search_manual(tmdb, query, date.today()))[:MAX_CANDIDATES]
 
 
+async def fetch_movie(tmdb_id: int) -> TmdbMovie | None:
+    """The TMDB film with this id (None if it does not exist)."""
+    if not settings.TMDB_API_KEY:
+        raise RuntimeError("Manca TMDB_API_KEY nel file .env")
+    async with TmdbClient() as tmdb:
+        return await tmdb.get_movie(tmdb_id)
+
+
 def describe_candidate(c: ScoredCandidate) -> str:
     m = c.movie
     original = f" - {m.original_title}" if m.original_title and m.original_title != m.title else ""
@@ -105,9 +124,10 @@ def _database(args: argparse.Namespace) -> Session:
     return open_database(path)
 
 
-def _saved_message(film: Film, tmdb_id: int) -> str:
+def _saved_message(film: Film, tmdb_id: int, movie: TmdbMovie | None = None) -> str:
+    named = f" ({movie.title}, {movie.year or '?'})" if movie else ""
     return (
-        f"Salvato: {film.raw_title} -> TMDB {tmdb_id} (config/abbinamenti.yaml).\n"
+        f"Salvato: {film.raw_title} -> TMDB {tmdb_id}{named} (config/abbinamenti.yaml).\n"
         "Per renderlo valido fai commit e push di quel file: lo applica il prossimo aggiornamento notturno."
     )
 
@@ -122,18 +142,30 @@ def run_cli(args: argparse.Namespace) -> int:
         print("\n".join(describe_candidate(c) for c in found) or "Nessun risultato")
         return 0
 
-    with _database(args) as db:
+    db = _database(args)
+    try:
         if args.command == "lista":
             films = find_films(db, args.testo) if args.testo else films_to_review(db)
             print("\n".join(describe(f) for f in films) or "Nessun film da verificare")
             return 0
+        # A mistyped id would stay in the file and never be applied: check it exists first
         try:
-            film = choose(db, args.film, args.tmdb)
+            movie = asyncio.run(fetch_movie(args.tmdb))
+        except (RuntimeError, httpx.HTTPError) as err:
+            print(f"Non riesco a controllare l'id su TMDB, non salvo niente: {err}")
+            return 1
+        if movie is None:
+            print(f"Su TMDB non c'è nessun film con id {args.tmdb}: non salvo niente.")
+            return 1
+        try:
+            film = choose(db, args.film, args.tmdb, OVERRIDES_PATH)
         except ValueError as err:
             print(err)
             return 1
-        print(_saved_message(film, args.tmdb))
+        print(_saved_message(film, args.tmdb, movie))
         return 0
+    finally:
+        close_database(db)
 
 
 def run_window(args: argparse.Namespace) -> int:
@@ -202,24 +234,42 @@ def run_window(args: argparse.Namespace) -> int:
         query_var.set(film.raw_title)
         run_search()
 
+    answers: queue.Queue = queue.Queue()
+    latest = [0]  # the search whose answer counts: an older one that arrives late is ignored
+
     def run_search(*_):
-        nonlocal candidates
+        """Search on another thread, so the window does not freeze while TMDB answers."""
+        latest[0] += 1
+        number, query = latest[0], query_var.get()
         result_list.delete(0, "end")
-        try:
-            candidates = asyncio.run(search(query_var.get()))
-        except (RuntimeError, httpx.HTTPError) as err:
-            candidates = []
-            status.config(text=f"Ricerca non riuscita: {err}")
-            return
-        for c in candidates:
-            result_list.insert("end", describe_candidate(c))
-        status.config(text="" if candidates else "Nessun risultato")
+        status.config(text="Cerco su TMDB...")
+
+        def work():
+            try:
+                answers.put((number, asyncio.run(search(query)), None))
+            except (RuntimeError, httpx.HTTPError) as err:
+                answers.put((number, [], err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_answers():
+        nonlocal candidates
+        while not answers.empty():
+            number, found, err = answers.get()
+            if number != latest[0]:
+                continue
+            candidates = found
+            result_list.delete(0, "end")
+            for c in found:
+                result_list.insert("end", describe_candidate(c))
+            status.config(text=f"Ricerca non riuscita: {err}" if err else ("" if found else "Nessun risultato"))
+        root.after(100, show_answers)
 
     def save(film: Film | None, tmdb_id: int | None):
         if film is None or tmdb_id is None:
             messagebox.showinfo("CNV", "Scegli prima un film e un abbinamento.")
             return
-        choose(db, film.id, tmdb_id)
+        choose(db, film.id, tmdb_id, OVERRIDES_PATH)
         status.config(text=_saved_message(film, tmdb_id))
 
     def save_suggestion():
@@ -236,8 +286,9 @@ def run_window(args: argparse.Namespace) -> int:
     use_suggestion.config(command=save_suggestion)
     use_result.config(command=save_result)
     load_films()
+    show_answers()
     root.mainloop()
-    db.close()
+    close_database(db)
     return 0
 
 

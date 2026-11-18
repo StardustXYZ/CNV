@@ -55,9 +55,10 @@ async def main_async() -> SyncResult:
         if result.errors:
             print("\n[!] Errori riscontrati durante lo scraping:")
             for slug, err in result.errors.items():
-                print(f"  * {slug}: {err}")
                 if os.getenv("GITHUB_ACTIONS"):  # shown as a warning on the run page
                     print(f"::warning::Sync, {slug}: {err}")
+                else:
+                    print(f"  * {slug}: {err}")
         else:
             print("\n[OK] Tutti gli scraper hanno completato con successo.")
 
