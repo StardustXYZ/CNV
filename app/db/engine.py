@@ -1,9 +1,7 @@
 """SQLAlchemy engine and session factory."""
 
-from collections.abc import Generator
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 
@@ -113,14 +111,3 @@ def init_db() -> None:
             """))
 
         conn.commit()
-
-
-def get_db() -> Generator[Session, None, None]:
-    """FastAPI dependency – yields a DB session and closes it after the request."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-

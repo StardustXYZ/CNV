@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// The colours of the web version (app/web/static/style.css), so the two look the same.
+/// The colours of CNV, the same on the phone and in the browser.
 abstract final class CnvColors {
   static const background = Color(0xFF121212);
   static const surface = Color(0xFF1E1E1E);

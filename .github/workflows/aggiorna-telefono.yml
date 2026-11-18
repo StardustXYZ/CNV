@@ -48,7 +48,6 @@ jobs:
     env:
       TZ: Europe/Rome                                   # "oggi" è il giorno italiano
       DATABASE_URL: sqlite:///${{ github.workspace }}/dati/cnv.db
-      AUTO_SYNC: "0"
     steps:
       - uses: actions/checkout@v7
 

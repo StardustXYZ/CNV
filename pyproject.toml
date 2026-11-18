@@ -4,8 +4,6 @@ version = "0.1.0"
 description = "Cinema tracker for Cosenza/Rende – track screenings, vote, export to Letterboxd"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi[standard]>=0.104",
-    "jinja2>=3.1",
     "sqlalchemy>=2.0",
     "httpx>=0.25",
     "beautifulsoup4>=4.12",

@@ -1,4 +1,4 @@
-"""Tests for backups, the full-sync runner and the daily scheduler."""
+"""Tests for backups and the full-sync runner."""
 
 from __future__ import annotations
 
@@ -7,13 +7,12 @@ import sqlite3
 
 import pytest
 
-from app.config import CinemaConfig, settings
+from app.config import CinemaConfig
 from app.db.models import SyncLog
 from app.scrapers.base import ShowtimeData
 from app.services import runner
 from app.services.backup import backup_database, list_backups, sqlite_path
-from app.services.runner import SyncAlreadyRunning, last_successful_sync, run_full_sync, utc_now
-from app.services.scheduler import needs_catchup, next_run_after
+from app.services.runner import SyncAlreadyRunning, run_full_sync, utc_now
 
 CINEMAS = [CinemaConfig(slug="andromeda", name="Andromeda", url="https://example.com", scraper="stub")]
 TODAY = datetime(2026, 10, 23).date()
@@ -88,7 +87,6 @@ async def test_run_full_sync_records_a_log(db):
     assert saved.finished_at is not None
     assert (saved.new_films, saved.showtimes, saved.films_total) == (1, 1, 1)
     assert saved.errors is None
-    assert last_successful_sync(db) == saved.started_at
 
 
 @pytest.mark.asyncio
@@ -126,69 +124,3 @@ async def test_only_one_sync_at_a_time(db):
         as_of_date=TODAY, cinemas=CINEMAS, scraper_results=shows(), coming_soon=[],
     )
     assert log.ok
-
-
-# ------------------------------------------------------------------
-# Scheduler
-# ------------------------------------------------------------------
-
-
-def test_next_run_after():
-    at = time(8, 0)
-    assert next_run_after(datetime(2026, 10, 23, 7, 59), at) == datetime(2026, 10, 23, 8, 0)
-    assert next_run_after(datetime(2026, 10, 23, 8, 0), at) == datetime(2026, 10, 24, 8, 0)
-    assert next_run_after(datetime(2026, 10, 23, 21, 30), at) == datetime(2026, 10, 24, 8, 0)
-
-
-def test_needs_catchup():
-    now = datetime(2026, 10, 23, 21, 0)
-    assert needs_catchup(None, now, 20)
-    assert needs_catchup(now - timedelta(hours=21), now, 20)
-    assert not needs_catchup(now - timedelta(hours=3), now, 20)
-
-
-def test_settings_defaults():
-    assert settings.AUTO_SYNC_TIME == time(8, 0)
-    assert settings.BACKUPS_KEEP >= 1
-
-
-def test_ran_recently():
-    from app.services.scheduler import ran_recently
-
-    now = datetime(2026, 10, 23, 8, 0)
-    assert ran_recently(now - timedelta(minutes=10), now)  # catch-up at 07:50
-    assert not ran_recently(now - timedelta(hours=5), now)
-    assert not ran_recently(None, now)
-
-
-@pytest.mark.asyncio
-async def test_daily_sync_is_skipped_right_after_another_one(db, monkeypatch):
-    from app.services.scheduler import DailySyncScheduler
-
-    db.add(SyncLog(trigger="automatico", ok=True, started_at=utc_now() - timedelta(minutes=10), finished_at=utc_now()))
-    db.commit()
-
-    class SessionFactory:
-        def __call__(self):
-            return self
-
-        def __enter__(self):
-            return db
-
-        def __exit__(self, *exc):
-            return False
-
-    scheduler = DailySyncScheduler(SessionFactory(), time(8, 0), 20)
-    runs = []
-
-    async def fake_run():
-        runs.append("sync")
-
-    monkeypatch.setattr(scheduler, "_run", fake_run)
-    assert await scheduler.run_scheduled() is False
-    assert runs == []
-
-    db.query(SyncLog).update({SyncLog.started_at: utc_now() - timedelta(hours=10)})
-    db.commit()
-    assert await scheduler.run_scheduled() is True
-    assert runs == ["sync"]

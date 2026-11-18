@@ -1,7 +1,7 @@
-"""One full sync as run by the CLI, the "Sync" button and the daily scheduler.
+"""One full sync as run by the terminal and by the nightly GitHub workflow.
 
 Takes a database backup, runs scrapers + TMDB matching, and records a SyncLog row.
-Only one sync runs at a time, also across processes (web app and terminal).
+Only one sync runs at a time, also across processes.
 """
 
 from __future__ import annotations
@@ -10,11 +10,10 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.models import SyncLog, SyncRun
+from app.db.models import SyncLog
 from app.services.backup import backup_database
 from app.services.sync import SyncResult, run_sync
 from app.services.tmdb import TmdbClient
@@ -45,16 +44,6 @@ def _running_elsewhere(db: Session) -> bool:
 
 def is_sync_running(db: Session) -> bool:
     return _lock.locked() or _running_elsewhere(db)
-
-
-def last_successful_sync(db: Session) -> datetime | None:
-    """Naive UTC time of the last completed sync (older databases: last successful cinema scrape)."""
-    last = db.query(func.max(SyncLog.started_at)).filter(SyncLog.ok.is_(True)).scalar()
-    if last is None:
-        last = db.query(func.max(SyncRun.created_at)).filter(SyncRun.status == "ok").scalar()
-    if isinstance(last, datetime) and last.tzinfo is not None:
-        last = last.astimezone(timezone.utc).replace(tzinfo=None)
-    return last
 
 
 async def run_full_sync(

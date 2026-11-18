@@ -2,19 +2,18 @@
 
 Cinema tracker personale per **Cosenza / Rende**.
 
-CNV raccoglie ogni giorno le programmazioni dei cinema della zona e mostra in un'unica pagina cosa c'è in sala oggi (cinema, sala e orari) e cosa sta per uscire. Ogni film si vota con **V** (voglio vederlo) o **?** (indeciso). Quando un film segnato V o ? esce da tutte le sale, finisce in una watchlist pronta da importare su **Letterboxd**.
+Ogni notte un aggiornamento automatico su GitHub raccoglie le programmazioni dei cinema della zona. L'app (Android e browser) mostra in un'unica pagina cosa c'è in sala oggi (cinema, sala e orari) e cosa sta per uscire. Ogni film si vota con **V** (voglio vederlo), **?** (indeciso) o **✓** (visto). Quando un film segnato V o ? esce da tutte le sale, finisce in una watchlist pronta da importare su **Letterboxd**.
 
 Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Unical** (Rende), **Teatro Italia / Tieri** (Cosenza), **Garden** (Rende).
 
 ## Funzionalità
 
-- **In sala oggi**: per ogni film i cinema, le sale e solo gli spettacoli non ancora iniziati (gli spettacoli dopo mezzanotte contano come parte della serata). Gli orari passati spariscono da soli se la pagina resta aperta.
+- **In sala oggi**: per ogni film i cinema, le sale e solo gli spettacoli non ancora iniziati (gli spettacoli dopo mezzanotte contano come parte della serata).
 - **In uscita**: film in prevendita o annunciati dai cinema ("prossimamente"), con la data e i cinema che li avranno.
-- **Voti V / ?** con filtri; cliccando di nuovo lo stesso voto lo si toglie.
+- **Voti V / ? / ✓** con filtri; toccando di nuovo lo stesso voto lo si toglie.
 - **Uscita dalle sale automatica**: un film è "uscito" quando non compare più in nessun cinema per 7 giorni (3 per gli eventi), così i buchi di programmazione non creano falsi allarmi.
 - **Abbinamento a TMDB**: locandina, titolo ufficiale e anno; i doppioni scritti in modo diverso dai vari cinema (es. "MAMMINA" e "mammina (other mommy)", versioni V.O. o IMAX) vengono uniti in un solo film.
 - **Export per Letterboxd**: CSV con l'ID TMDB di ogni film, così Letterboxd sceglie il film esatto; i film già esportati non vengono ripetuti.
-- **Aggiornamento automatico** ogni giorno, con backup del database prima di ogni aggiornamento e una pagina di stato.
 
 ## App Android e versione web
 
@@ -36,63 +35,24 @@ Cosa salva CNV e dove è spiegato nell'app: pagina **Voti** → **Privacy**. Da 
 
 La stessa app si apre anche nel browser, per esempio sul PC: https://stardustxyz.github.io/CNV/. Ha le stesse pagine e, con lo stesso account, gli stessi voti del telefono; senza account i voti restano in quel browser. Non ha le notifiche (arrivano sull'app Android) né l'avviso delle versioni nuove (la pagina è sempre l'ultima). La prima volta prende da sola i voti della vecchia versione web salvati nello stesso browser.
 
-## Primo avvio (Windows)
+## Sul PC (per chi gestisce CNV)
+
+L'aggiornamento dei dati gira su GitHub, non serve tenere acceso il PC. Sul PC servono solo per provare l'aggiornamento o per correggere un abbinamento a TMDB.
 
 1. Installa **Python 3.11 o più recente** da [python.org](https://www.python.org/downloads/) (spunta *Add python.exe to PATH*).
-2. Scarica il progetto:
+2. Scarica il progetto e prepara l'ambiente:
    ```bash
    git clone https://github.com/StardustXYZ/CNV.git
    cd CNV
+   python -m venv .venv
+   # Windows: .venv\Scripts\activate     Linux/macOS: source .venv/bin/activate
+   pip install -e ".[dev]"
    ```
 3. Crea una chiave API gratuita su [TMDB](https://www.themoviedb.org/settings/api) e mettila in un file `.env` nella cartella del progetto:
    ```
    TMDB_API_KEY=la_tua_chiave
    ```
    Serve la "API Key" corta, non il token lungo. Il file `.env` non va mai condiviso né caricato su GitHub.
-4. Fai doppio clic su **`run.bat`**. La prima volta crea l'ambiente Python e installa le dipendenze; poi avvia l'app e apre il browser su **http://127.0.0.1:8000**.
-5. (Facoltativo) Crea l'icona **CNV** sul Desktop:
-   ```bat
-   powershell -ExecutionPolicy Bypass -File crea_collegamento.ps1
-   ```
-   Da lì in poi basta un doppio clic sull'icona. Puoi anche aggiungerla alla barra delle applicazioni (tasto destro → Mostra altre opzioni → Aggiungi alla barra delle applicazioni).
-
-Al primo avvio il database è vuoto: parte da solo un aggiornamento (1-2 minuti), oppure premi **🔄 Sync**.
-
-### Uso quotidiano
-
-- **Aprire**: doppio clic sull'icona CNV (o su `run.bat`). Se l'app è già accesa si apre solo il browser.
-- **Chiudere**: chiudi la finestra "run.bat" (o premi Ctrl+C dentro).
-- Finché l'app è aperta, ogni giorno alle 08:00 si aggiorna da sola.
-
-### Linux / macOS
-
-```bash
-chmod +x run.sh
-./run.sh
-```
-
-### Avvio manuale
-
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
-pip install -e ".[dev]"
-python -m app.launcher
-```
-
-## Le pagine
-
-| Pagina | Cosa mostra |
-|---|---|
-| **In sala** | Film in programmazione con gli spettacoli rimasti oggi per cinema e sala. In fondo, a parte, i film spariti dai siti dei cinema con la data in cui verranno segnati come usciti |
-| **In uscita** | Film annunciati o in prevendita, ordinati per data, con i cinema che li avranno ("data da definire" se il cinema non la indica) |
-| **Da verificare** | Film che CNV non è riuscito ad abbinare con certezza a TMDB: si conferma il suggerimento o si cerca a mano. Se un film già abbinato ha locandina o titolo sbagliati, il link **cambia** sulla sua scheda apre la stessa ricerca |
-| **Watchlist** | Film usciti da tutte le sale segnati V o ?: si scarica il CSV per Letterboxd e si segnano come esportati |
-| **Stato** | Prossimo aggiornamento automatico, cronologia degli aggiornamenti, esito per ogni cinema e backup |
-| **Cinema** (menu ☰ a sinistra) | Un singolo cinema: gli spettacoli di oggi ancora da fare e un calendario con i soli giorni che il sito del cinema ha già in programma |
-
-Toccando un orario si apre la pagina d'acquisto di quello spettacolo sul sito del cinema (al Garden la pagina anyticket della sala; se la vendita online non è ancora aperta, la scheda del film).
 
 ## Come vengono decisi gli stati dei film
 
@@ -126,35 +86,28 @@ In `config/cinemas.yaml` aggiungi una voce con `slug`, `name`, `url` e lo `scrap
 
 ## Aggiornamento dei dati (sync)
 
-Ogni aggiornamento legge le programmazioni e le pagine "prossimamente", abbina i nuovi film a TMDB, unisce i doppioni e ricalcola lo stato di ogni film. Prima viene fatta una copia del database in `backups/`.
+Ogni aggiornamento legge le programmazioni e le pagine "prossimamente", abbina i nuovi film a TMDB, unisce i doppioni e ricalcola lo stato di ogni film. Il database di riferimento è nel ramo `dati` di GitHub e lo aggiorna il workflow **Aggiorna CNV per il telefono** ogni notte (e a mano da Actions → Run workflow).
 
-Parte in tre modi:
+Per provarlo sul PC: `python -m app.sync` (stampa un riepilogo di film nuovi, cambi di stato e abbinamenti TMDB; lavora su `cinewatch.db`, una copia locale che non arriva al telefono). Prima viene fatta una copia del database in `backups/`. Ne gira uno alla volta; il log dettagliato è in `logs/cnv.log`.
 
-- **automatico**, ogni giorno all'orario impostato finché l'app è aperta, e all'avvio se l'ultimo aggiornamento ha più di 20 ore;
-- dal bottone **🔄 Sync** nell'app;
-- da terminale: `python -m app.sync` (stampa un riepilogo di film nuovi, cambi di stato e abbinamenti TMDB).
+Se nessun cinema si lascia leggere l'aggiornamento fallisce e il sito resta quello di ieri; se ne manca solo uno è un avviso e i suoi film restano per al massimo 7 giorni.
 
-Ne gira uno alla volta. Il log dettagliato è in `logs/cnv.log`.
+### Correggere un abbinamento a TMDB
 
-### Aggiornare anche ad app chiusa (Windows, facoltativo)
+Se un film ha locandina o titolo sbagliati, o CNV non è riuscito ad abbinarlo (`python -m app.sync` li elenca sotto "Da verificare"):
 
-Un'attività pianificata di Windows può lanciare `sync_giornaliero.bat` ogni mattina. Nella cartella del progetto:
-
-```bat
-schtasks /Create /TN "CNV sync giornaliero" /TR "\"%CD%\sync_giornaliero.bat\"" /SC DAILY /ST 08:00
+```bash
+python -m app.abbina                  # la finestra: film da verificare, ricerca su TMDB, scelta
+python -m app.abbina lista [testo]    # film da verificare, o con il testo nel titolo
+python -m app.abbina cerca "titolo"   # ricerca su TMDB
+python -m app.abbina imposta 123 456  # film 123 -> film TMDB 456
 ```
 
-Per toglierla: `schtasks /Delete /TN "CNV sync giornaliero"`.
+I film si leggono dal database notturno su GitHub (senza modificarlo). La scelta si scrive in `config/abbinamenti.yaml`: fai commit e push di quel file e il prossimo aggiornamento notturno la applica.
 
 ## Export verso Letterboxd
 
-Letterboxd non ha un'API pubblica, quindi l'export passa da un file CSV con le colonne `tmdbID, Title, Year`:
-
-1. pagina **Watchlist** → **Scarica CSV per Letterboxd**;
-2. importa il file nella tua watchlist su Letterboxd;
-3. torna su CNV e premi **Li ho importati su Letterboxd**: quei film non finiranno nel prossimo file (si possono rimettere con "Esporta di nuovo").
-
-Nel file vanno solo i film con un abbinamento TMDB confermato; gli altri sono elencati nella pagina e si sistemano in **Da verificare**.
+Letterboxd non ha un'API pubblica, quindi l'export passa da un file CSV con le colonne `tmdbID, Title, Year`, che l'app genera nelle pagine **Voti** (watchlist e diario): importalo su Letterboxd, poi nell'app segna i film come esportati, così non finiranno nel prossimo file. Nel file vanno solo i film con un abbinamento TMDB confermato.
 
 ## Configurazione
 
@@ -164,18 +117,14 @@ Tutto in `config/cinemas.yaml`, sezione `sync_settings`:
 |---|---|---|
 | `days_to_uscito` | 7 | giorni di assenza dopo cui un film è "uscito" |
 | `days_to_uscito_evento` | 3 | lo stesso per gli eventi (anteprime, film evento) |
-| `auto_sync` | true | aggiornamento automatico mentre l'app è aperta |
-| `auto_sync_time` | "08:00" | orario dell'aggiornamento automatico |
-| `auto_sync_catchup_hours` | 20 | all'avvio, aggiorna subito se i dati sono più vecchi di così |
-| `backups_keep` | 14 | copie del database da tenere in `backups/` |
+| `backups_keep` | 14 | copie del database da tenere in `backups/` (sync da terminale) |
 
 ## Risoluzione dei problemi
 
-- **Il browser dice "Impossibile raggiungere il sito"**: l'app non è accesa. Avviala con l'icona o con `run.bat` e aspetta la riga "Application startup complete".
-- **La finestra di `run.bat` mostra un errore**: leggi il messaggio, la finestra resta aperta apposta. Se manca Python, installalo e riprova.
-- **Mancano locandine e titoli ufficiali**: controlla che il file `.env` contenga `TMDB_API_KEY`.
-- **Un cinema non si aggiorna**: guarda la pagina **Stato** e `logs/cnv.log`; il sito potrebbe aver cambiato struttura.
-- **Serve tornare a un database precedente**: chiudi l'app e copia uno dei file di `backups/` al posto di `cinewatch.db`.
+- **Mancano locandine e titoli ufficiali**: controlla che il file `.env` contenga `TMDB_API_KEY` (e, su GitHub, il segreto `TMDB_API_KEY`).
+- **Un cinema non si aggiorna**: guarda l'avviso nella pagina del workflow su GitHub, `python -m app.check_sites` e `logs/cnv.log`; il sito potrebbe aver cambiato struttura.
+- **Un film ha la locandina sbagliata**: vedi "Correggere un abbinamento a TMDB".
+- **Serve tornare a un database precedente**: il database dell'app è un solo commit nel ramo `dati`, sovrascritto ogni notte; per quello locale copia uno dei file di `backups/` al posto di `cinewatch.db`.
 
 ## Test
 
@@ -219,17 +168,17 @@ Le regole di accesso di Firestore sono in `firebase/firestore.rules`, con i test
 app/
   scrapers/        # 18tickets, Cinema Garden, cosenzacinema.it
   db/              # modelli SQLAlchemy e piccole migrazioni dello schema
-  services/        # sync, film in arrivo, matching TMDB, export, backup, aggiornamento automatico
-  web/             # pagine (FastAPI + Jinja2 + htmx), stile e icona
-  launcher.py      # avvia l'app e apre il browser
-  sync.py          # aggiornamento da terminale
+  services/        # sync, film in arrivo, matching TMDB e abbinamenti a mano, backup
+  sync.py          # aggiornamento da terminale (lo stesso che gira su GitHub)
+  abbina.py        # correzione a mano degli abbinamenti TMDB (finestra e comandi)
+  export_static.py # scrive data.json per l'app
+  push.py          # notifiche sul telefono
 config/
   cinemas.yaml     # cinema, fonti dei film in arrivo e impostazioni
+  abbinamenti.yaml # abbinamenti a TMDB scelti a mano
 tests/             # test automatici e pagine HTML di esempio dei cinema
 mobile/            # l'app in Flutter: Android e browser (GitHub Pages)
 firebase/          # regole di accesso di Firestore e i loro test
-run.bat / run.sh   # avvio
-crea_collegamento.ps1, sync_giornaliero.bat   # icona sul Desktop e aggiornamento pianificato (Windows)
 ```
 
 ---
