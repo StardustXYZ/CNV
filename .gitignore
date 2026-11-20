@@ -50,3 +50,7 @@ mobile/android/key.properties
 # Claude Code and graphify
 .claude/
 graphify-out/
+
+# Solo sul PC: documentazione e chiavi (mai su GitHub)
+CNV-documentazione.pdf
+cnv-chiavi/
