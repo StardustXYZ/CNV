@@ -42,9 +42,10 @@ void _openFilm(BuildContext context, Film film, DataStore store) =>
 
 /// "In uscita": the announced films, as a list grouped by date or as a month calendar.
 class InUscitaPage extends StatefulWidget {
-  const InUscitaPage({super.key, required this.store});
+  const InUscitaPage({super.key, required this.store, this.scroll});
 
   final DataStore store;
+  final ScrollController? scroll; // to go back to the top (tap on the open tab)
 
   @override
   State<InUscitaPage> createState() => _InUscitaPageState();
@@ -68,6 +69,8 @@ class _InUscitaPageState extends State<InUscitaPage> {
     return RefreshIndicator(
       onRefresh: widget.store.refresh,
       child: ListView(
+        controller: widget.scroll,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
           SegmentedButton<bool>(
@@ -82,6 +85,7 @@ class _InUscitaPageState extends State<InUscitaPage> {
           const SizedBox(height: 10),
           TextField(
             controller: _search,
+            textInputAction: TextInputAction.search,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               hintText: 'Cerca un titolo',

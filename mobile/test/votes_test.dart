@@ -5,6 +5,7 @@ import 'package:cnv/data/repository.dart';
 import 'package:cnv/main.dart';
 import 'package:cnv/pages/in_sala_page.dart';
 import 'package:cnv/pages/voti_page.dart';
+import 'package:cnv/widgets/spring_sheet.dart';
 import 'package:cnv/widgets/vote_buttons.dart';
 
 import 'personal_test.dart' show MemoryPersonal;
@@ -49,7 +50,7 @@ void main() {
     final personal = await openApp(tester);
     await tester.tap(button('Hope', '✓'));
     await tester.pumpAndSettle();
-    final sheet = find.byType(BottomSheet);
+    final sheet = find.byType(SheetContainer);
     expect(find.descendant(of: sheet, matching: find.text('Dove hai visto Hope?')), findsOneWidget);
     expect(find.descendant(of: sheet, matching: find.text('Cinema Garden')), findsOneWidget);
     expect(find.descendant(of: sheet, matching: find.text('Andromeda River')), findsNothing); // Hope is only at the Garden

@@ -13,9 +13,10 @@ import 'film_page.dart';
 
 /// "Watchlist": films marked V or ? that left the cinemas, to add to the watchlist on Letterboxd.
 class WatchlistPage extends StatelessWidget {
-  const WatchlistPage({super.key, required this.store});
+  const WatchlistPage({super.key, required this.store, this.scroll});
 
   final DataStore store;
+  final ScrollController? scroll; // to go back to the top (tap on the open tab)
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +32,7 @@ class WatchlistPage extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: store.refresh,
       child: ListView(
+        controller: scroll,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
           const PageHeader(

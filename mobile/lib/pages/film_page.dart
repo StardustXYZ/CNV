@@ -30,7 +30,10 @@ class FilmPage extends StatelessWidget {
         final cinemas = _cinemaDays(programme, current);
         final releases = programme.cinemaReleases(current);
         final elsewhere = [for (final r in releases) if (r.announced) r];
-        return Scaffold(
+        return Title(
+          title: '${current.title} · CNV',
+          color: CnvColors.background,
+          child: Scaffold(
           appBar: AppBar(title: Text(current.title, overflow: TextOverflow.ellipsis)),
           body: RefreshIndicator(
             onRefresh: store.refresh,
@@ -150,7 +153,7 @@ class FilmPage extends StatelessWidget {
               ],
             ),
           ),
-        );
+        ));
       },
     );
   }

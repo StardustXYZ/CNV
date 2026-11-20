@@ -81,10 +81,10 @@ class AppInfoBox extends StatelessWidget {
       final release = store.available;
       children.add(Text(
         release != null
-            ? 'Hai la versione ${store.currentVersion}: è uscita la ${release.version}.'
+            ? 'Hai la versione ${store.versionLabel}: è uscita la ${release.version}.'
             : store.checkedAt != null
-                ? 'Hai la versione ${store.currentVersion}, l’ultima uscita.'
-                : 'Versione ${store.currentVersion}',
+                ? 'Hai la versione ${store.versionLabel}, l’ultima uscita.'
+                : 'Versione ${store.versionLabel}',
         style: const TextStyle(fontSize: 13, color: CnvColors.textMuted),
       ));
       if (store.problem != null) {

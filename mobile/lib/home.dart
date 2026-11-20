@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'data/changelog.dart';
 import 'data/repository.dart';
@@ -72,6 +73,7 @@ class _HomeShellState extends State<HomeShell> {
   final _pager = PageController();
   late final DataStore _store = widget.store;
   int _current = 0;
+  final _scrollers = List.generate(cnvPages.length, (_) => ScrollController()); // one per page, to go back to the top
 
   @override
   void initState() {
@@ -87,10 +89,23 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void dispose() {
     _pager.dispose();
+    for (final s in _scrollers) {
+      s.dispose();
+    }
     super.dispose();
   }
 
+  /// A tap on the menu: another page, or (on the one already open) back to the top of it.
+  void _onTab(int index) {
+    if (index != _current) return _goTo(index);
+    final scroller = _scrollers[index];
+    if (scroller.hasClients && scroller.offset > 0) {
+      scroller.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+    }
+  }
+
   void _goTo(int index) {
+    HapticFeedback.selectionClick();
     setState(() => _current = index);
     _pager.animateToPage(index, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
   }
@@ -101,7 +116,10 @@ class _HomeShellState extends State<HomeShell> {
       listenable: _store,
       builder: (context, _) {
         final ready = _store.data != null;
-        return Scaffold(
+        return Title(
+          title: '${cnvPages[_current].label} · CNV',
+          color: CnvColors.background,
+          child: Scaffold(
           drawer: CinemaDrawer(store: _store), // ☰: the cinemas, as the menu of the web version
           appBar: AppBar(
             title: const CnvTitle(),
@@ -124,11 +142,11 @@ class _HomeShellState extends State<HomeShell> {
                         controller: _pager,
                         onPageChanged: (index) => setState(() => _current = index),
                         children: [
-                          if (ready) InSalaPage(store: _store) else PagePlaceholder(page: cnvPages[0]),
-                          if (ready) InUscitaPage(store: _store) else PagePlaceholder(page: cnvPages[1]),
-                          if (ready) WatchlistPage(store: _store) else PagePlaceholder(page: cnvPages[2]),
-                          if (ready) VistiPage(store: _store) else PagePlaceholder(page: cnvPages[3]),
-                          VotiPage(store: _store),
+                          if (ready) InSalaPage(store: _store, scroll: _scrollers[0]) else PagePlaceholder(page: cnvPages[0]),
+                          if (ready) InUscitaPage(store: _store, scroll: _scrollers[1]) else PagePlaceholder(page: cnvPages[1]),
+                          if (ready) WatchlistPage(store: _store, scroll: _scrollers[2]) else PagePlaceholder(page: cnvPages[2]),
+                          if (ready) VistiPage(store: _store, scroll: _scrollers[3]) else PagePlaceholder(page: cnvPages[3]),
+                          VotiPage(store: _store, scroll: _scrollers[4]),
                         ],
                       ),
               ),
@@ -136,13 +154,13 @@ class _HomeShellState extends State<HomeShell> {
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _current,
-            onDestinationSelected: _goTo,
+            onDestinationSelected: _onTab,
             destinations: [
               for (final page in cnvPages)
                 NavigationDestination(icon: Icon(page.icon), selectedIcon: Icon(page.selectedIcon), label: page.label),
             ],
           ),
-        );
+        ));
       },
     );
   }

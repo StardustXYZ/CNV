@@ -21,6 +21,17 @@
   <meta name="description" content="Cinema di Cosenza e Rende: film in sala, in uscita e watchlist per Letterboxd">
   <meta name="theme-color" content="#1e1e1e">
 
+  <!-- Link preview (WhatsApp, Telegram, X) -->
+  <meta property="og:title" content="CNV – Chi Ni Vidimu">
+  <meta property="og:description" content="Cinema di Cosenza e Rende: film in sala, in uscita e watchlist per Letterboxd">
+  <meta property="og:image" content="https://stardustxyz.github.io/CNV/icons/Icon-512.png">
+  <meta property="og:url" content="https://stardustxyz.github.io/CNV/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CNV – Chi Ni Vidimu">
+  <meta name="twitter:description" content="Cinema di Cosenza e Rende: film in sala, in uscita e watchlist per Letterboxd">
+  <meta name="twitter:image" content="https://stardustxyz.github.io/CNV/icons/Icon-512.png">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -32,8 +43,17 @@
 
   <title>CNV – Chi Ni Vidimu</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    .progress-container {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 120px; height: 8px; background: #2a2a2a; border-radius: 10px; overflow: hidden;
+    }
+    .progress-bar { height: 100%; width: 0; background: #bb86fc; transition: width 0.4s ease; }
+  </style>
 </head>
 <body style="background: #121212">
+  <div class="progress-container"><div class="progress-bar"></div></div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

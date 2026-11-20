@@ -20,9 +20,12 @@ import 'home.dart';
 import 'pages/account_page.dart';
 import 'pages/update_widgets.dart';
 import 'theme.dart';
+import 'widgets/friendly_error_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // A widget that breaks shows a friendly message instead of an empty grey box
+  ErrorWidget.builder = (details) => FriendlyErrorView(details: details);
   AccountBackend? backend;
   PushBackend? push;
   try {
@@ -39,9 +42,9 @@ Future<void> main() async {
   // In the browser the page is always the latest version, and notifications arrive on the phone
   if (!kIsWeb) {
     try {
-      final version = (await PackageInfo.fromPlatform()).version;
-      updates = UpdateStore(currentVersion: version);
-      changelog = ChangelogStore(currentVersion: version);
+      final info = await PackageInfo.fromPlatform();
+      updates = UpdateStore(currentVersion: info.version, build: info.buildNumber);
+      changelog = ChangelogStore(currentVersion: info.version);
     } catch (err) {
       debugPrint('Versione non letta: $err');
     }
@@ -151,16 +154,24 @@ class _CnvAppState extends State<CnvApp> {
               debugShowCheckedModeBanner: false,
               scaffoldMessengerKey: _messenger,
               theme: cnvTheme(),
+              scrollBehavior: const CnvScrollBehavior(), // scrollbar on the vertical lists of the phone
               locale: const Locale('it'),
               supportedLocales: const [Locale('it')],
               localizationsDelegates: GlobalMaterialLocalizations.delegates,
-              // On a wide screen (the browser on a PC) the app keeps a phone's width, centered
-              builder: (context, child) => ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: phoneWidth), child: child),
-                ),
-              ),
+              // On a wide screen (the browser on a PC) the app keeps a phone's width, centered.
+              // The system text size is followed only up to x1.1, so the layouts do not break
+              builder: (context, child) {
+                final media = MediaQuery.of(context);
+                return MediaQuery(
+                  data: media.copyWith(textScaler: media.textScaler.clamp(maxScaleFactor: 1.1)),
+                  child: ColoredBox(
+                    color: Colors.black,
+                    child: Center(
+                      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: phoneWidth), child: child),
+                    ),
+                  ),
+                );
+              },
               home: HomeShell(store: _store, changelog: widget.changelog),
             ),
           ),

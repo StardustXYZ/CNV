@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// The colours of CNV, the same on the phone and in the browser.
@@ -12,6 +13,50 @@ abstract final class CnvColors {
   static const green = Color(0xFF4CAF50);
   static const yellow = Color(0xFFFF9800);
   static const red = Color(0xFFF44336);
+}
+
+/// A scrollbar on vertical lists on the phone; on desktop browsers Flutter already adds its own.
+class CnvScrollBehavior extends MaterialScrollBehavior {
+  const CnvScrollBehavior();
+
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    final isPhone = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+    final vertical = details.direction == AxisDirection.down || details.direction == AxisDirection.up;
+    if (!isPhone || !vertical) return super.buildScrollbar(context, child, details);
+    return Scrollbar(controller: details.controller, child: child);
+  }
+}
+
+/// No page transition in the browser or on desktop; the phone keeps its own.
+const pageTransitions = PageTransitionsTheme(
+  builders: {
+    TargetPlatform.android: kIsWeb ? _NoTransitions() : ZoomPageTransitionsBuilder(),
+    TargetPlatform.iOS: kIsWeb ? _NoTransitions() : CupertinoPageTransitionsBuilder(),
+    TargetPlatform.macOS: _NoTransitions(),
+    TargetPlatform.windows: _NoTransitions(),
+    TargetPlatform.linux: _NoTransitions(),
+    TargetPlatform.fuchsia: _NoTransitions(),
+  },
+);
+
+class _NoTransitions extends PageTransitionsBuilder {
+  const _NoTransitions();
+
+  @override
+  Duration get transitionDuration => Duration.zero;
+
+  @override
+  Duration get reverseTransitionDuration => Duration.zero;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
 }
 
 ThemeData cnvTheme() {
@@ -31,6 +76,12 @@ ThemeData cnvTheme() {
     colorScheme: scheme,
     scaffoldBackgroundColor: CnvColors.background,
     dividerColor: CnvColors.border,
+    pageTransitionsTheme: pageTransitions,
+    textSelectionTheme: TextSelectionThemeData(
+      selectionColor: CnvColors.accent.withValues(alpha: 0.3),
+      selectionHandleColor: CnvColors.accent,
+      cursorColor: CnvColors.accent,
+    ),
     appBarTheme: const AppBarTheme(
       backgroundColor: CnvColors.surface,
       foregroundColor: CnvColors.text,

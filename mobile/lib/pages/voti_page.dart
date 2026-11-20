@@ -16,9 +16,10 @@ import '../data/device_words.dart';
 /// "Voti": how many films have each vote, and the copy of the votes (save and restore,
 /// also the one made by the web version). Login and notifications come later.
 class VotiPage extends StatelessWidget {
-  const VotiPage({super.key, required this.store});
+  const VotiPage({super.key, required this.store, this.scroll});
 
   final DataStore store;
+  final ScrollController? scroll; // to go back to the top (tap on the open tab)
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +28,7 @@ class VotiPage extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: store.refresh,
       child: ListView(
+        controller: scroll,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
           const AccountSection(),

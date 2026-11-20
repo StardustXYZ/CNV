@@ -30,6 +30,15 @@ class CinemaPage extends StatefulWidget {
 class _CinemaPageState extends State<CinemaPage> {
   String? _chosen; // day picked in the calendar; null = the first one with shows
   Timer? _minute;
+  final _dayKeys = <String, GlobalKey>{}; // one per day chip, to scroll the chosen one into view
+
+  /// A day chip was tapped: choose the day and bring its chip fully into view.
+  void _showDay(String day) {
+    setState(() => _chosen = day);
+    final chip = _dayKeys[day]?.currentContext;
+    if (chip == null) return;
+    Scrollable.ensureVisible(chip, alignment: 0.5, duration: const Duration(milliseconds: 200), curve: Curves.easeInOut);
+  }
 
   @override
   void initState() {
@@ -61,7 +70,10 @@ class _CinemaPageState extends State<CinemaPage> {
         films.sort((a, b) => firstStart(a.value).compareTo(firstStart(b.value)));
         final coming = comingFilms(programme, ''); // only this cinema's shows and announcements
 
-        return Scaffold(
+        return Title(
+          title: '${cinema?.name ?? widget.slug} · CNV',
+          color: CnvColors.background,
+          child: Scaffold(
           appBar: AppBar(
             title: Text(cinema?.name ?? widget.slug, overflow: TextOverflow.ellipsis),
             actions: [
@@ -96,20 +108,39 @@ class _CinemaPageState extends State<CinemaPage> {
                 ] else ...[
                   SizedBox(
                     height: 40,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        for (final d in days)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: Text(d == programme.day ? 'Oggi' : capitalize(formatDay(d, programme.day))),
-                              selected: d == selected,
-                              showCheckmark: false,
-                              onSelected: (_) => setState(() => _chosen = d),
-                            ),
+                    // Wider than the page by its 12px padding on each side: the chips slide to the screen edge
+                    child: LayoutBuilder(
+                      builder: (context, box) => OverflowBox(
+                        minWidth: box.maxWidth + 24,
+                        maxWidth: box.maxWidth + 24,
+                        child: ShaderMask(
+                          // the end edge fades: there is more to scroll
+                          shaderCallback: (Rect bounds) => const LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [Colors.white, Colors.white, Colors.white, Colors.transparent],
+                            stops: [0.0, 0.0, 0.88, 1.0],
+                          ).createShader(bounds),
+                          blendMode: BlendMode.dstIn,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            children: [
+                              for (final d in days)
+                                Padding(
+                                  key: _dayKeys.putIfAbsent(d, GlobalKey.new),
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ChoiceChip(
+                                    label: Text(d == programme.day ? 'Oggi' : capitalize(formatDay(d, programme.day))),
+                                    selected: d == selected,
+                                    showCheckmark: false,
+                                    onSelected: (_) => _showDay(d),
+                                  ),
+                                ),
+                            ],
                           ),
-                      ],
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -176,7 +207,7 @@ class _CinemaPageState extends State<CinemaPage> {
               ],
             ),
           ),
-        );
+        ));
       },
     );
   }

@@ -64,6 +64,7 @@ AppRelease? latestRelease(Object? json) {
 class UpdateStore extends ChangeNotifier {
   UpdateStore({
     required this.currentVersion,
+    this.build,
     http.Client? client,
     TextStorage? storage,
   })  : _client = client ?? http.Client(),
@@ -71,8 +72,12 @@ class UpdateStore extends ChangeNotifier {
 
   static const _name = 'aggiornamento.txt'; // the version dismissed with "Non ora"
   final String currentVersion;
+  final String? build; // the build number (1.1.0+16 is "16"); none in the tests
   final http.Client _client;
   final TextStorage _storage;
+
+  /// "1.1.0 (16)" for the screen: the version with its build number.
+  String get versionLabel => build == null || build!.isEmpty ? currentVersion : '$currentVersion ($build)';
 
   AppRelease? available; // newer than this one
   String? _dismissed;

@@ -14,9 +14,10 @@ import 'film_page.dart';
 /// "Visti": films marked ✓, with day and cinema to correct, the statistics, and the file
 /// for the Letterboxd diary.
 class VistiPage extends StatelessWidget {
-  const VistiPage({super.key, required this.store});
+  const VistiPage({super.key, required this.store, this.scroll});
 
   final DataStore store;
+  final ScrollController? scroll; // to go back to the top (tap on the open tab)
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +31,7 @@ class VistiPage extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: store.refresh,
       child: ListView(
+        controller: scroll,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
           const PageHeader(

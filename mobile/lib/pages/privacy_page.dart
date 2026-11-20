@@ -52,7 +52,10 @@ class PrivacyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return Title(
+      title: 'Privacy · CNV',
+      color: CnvColors.background,
+      child: Scaffold(
       appBar: AppBar(title: const Text('Privacy')),
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, 12, 16, BottomPadding.of(context, minimum: 28)),
@@ -66,6 +69,6 @@ class PrivacyPage extends StatelessWidget {
           ],
         ],
       ),
-    );
+    ));
   }
 }

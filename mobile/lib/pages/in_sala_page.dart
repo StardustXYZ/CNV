@@ -30,9 +30,10 @@ bool titleMatches(Film film, String query) {
 /// "In sala": the films programmed now, the latest arrivals first, with today's shows (or
 /// the next day's), filters by title, genre and cinema, and the films no longer programmed.
 class InSalaPage extends StatefulWidget {
-  const InSalaPage({super.key, required this.store});
+  const InSalaPage({super.key, required this.store, this.scroll});
 
   final DataStore store;
+  final ScrollController? scroll; // to go back to the top (tap on the open tab)
 
   @override
   State<InSalaPage> createState() => _InSalaPageState();
@@ -102,11 +103,14 @@ class _InSalaPageState extends State<InSalaPage> {
     return RefreshIndicator(
       onRefresh: widget.store.refresh,
       child: ListView(
+        controller: widget.scroll,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
           NotUpdatedNotice(data: data, cinema: _cinema),
           TextField(
             controller: _search,
+            textInputAction: TextInputAction.search,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               hintText: 'Cerca un titolo',

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/format.dart';
 import '../data/models.dart';
 import '../data/personal.dart';
 import '../theme.dart';
+import 'spring_sheet.dart';
 
 const _activeColors = {'V': CnvColors.green, '?': CnvColors.yellow, 'S': CnvColors.accent};
 
@@ -36,6 +38,7 @@ class VoteButtons extends StatelessWidget {
                     active: current == v,
                     color: _activeColors[v]!,
                     onTap: () async {
+                      HapticFeedback.lightImpact();
                       final nowSeen = v == 'S' && current != 'S';
                       await personal.toggleVote(film.id, v, today: today);
                       if (nowSeen && context.mounted) await askWhereSeen(context, film, data, personal);
@@ -98,9 +101,8 @@ class _VoteButton extends StatelessWidget {
 Future<void> askWhereSeen(BuildContext context, Film film, CnvData data, PersonalStore personal) async {
   final showing = {for (final s in data.shows) if (s.filmId == film.id) s.cinema};
   final cinemas = [for (final c in data.cinemas) if (showing.isEmpty || showing.contains(c.slug)) c];
-  final choice = await showModalBottomSheet<String>(
+  final choice = await showSpringBottomSheet<String>(
     context: context,
-    backgroundColor: CnvColors.surface,
     builder: (sheet) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,

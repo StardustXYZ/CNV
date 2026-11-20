@@ -276,9 +276,13 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
       listenable: widget.account,
       builder: (context, _) {
         final busy = widget.account.busy;
-        return Scaffold(
+        return Title(
+          title: 'Accedi · CNV',
+          color: CnvColors.background,
+          child: Scaffold(
           appBar: AppBar(title: Text(_register ? 'Crea un account' : 'Accedi con email')),
           body: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
             children: [
               SegmentedButton<bool>(
@@ -298,12 +302,14 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
                 keyboardType: TextInputType.emailAddress,
                 autofillHints: const [AutofillHints.email],
                 autocorrect: false,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _password,
                 obscureText: _hidden,
+                textInputAction: TextInputAction.done,
                 autofillHints: [_register ? AutofillHints.newPassword : AutofillHints.password],
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
@@ -337,7 +343,7 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
                 TextButton(onPressed: busy ? null : _reset, child: const Text('Password dimenticata?')),
             ],
           ),
-        );
+        ));
       },
     );
   }
@@ -399,9 +405,13 @@ class _AllowListPageState extends State<AllowListPage> {
       listenable: widget.account,
       builder: (context, _) {
         final list = widget.account.allowed ?? const <String>[];
-        return Scaffold(
+        return Title(
+          title: 'Ammessi · CNV',
+          color: CnvColors.background,
+          child: Scaffold(
           appBar: AppBar(title: const Text('Ammessi')),
           body: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
             children: [
               const Text('Chi è in questa lista può usare il suo account in CNV, con Google o con email e password '
@@ -415,6 +425,7 @@ class _AllowListPageState extends State<AllowListPage> {
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
                       autocorrect: false,
+                      textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _add(),
                       decoration: const InputDecoration(labelText: 'Email da aggiungere', border: OutlineInputBorder(), isDense: true),
                     ),
@@ -439,7 +450,7 @@ class _AllowListPageState extends State<AllowListPage> {
                 ),
             ],
           ),
-        );
+        ));
       },
     );
   }

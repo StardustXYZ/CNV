@@ -47,7 +47,13 @@ class Poster extends StatelessWidget {
                     url!,
                     fit: BoxFit.cover,
                     webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                    loadingBuilder: (_, image, progress) => progress == null ? image : placeholder,
+                    loadingBuilder: (_, image, progress) => AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: KeyedSubtree(
+                        key: ValueKey(progress == null),
+                        child: progress == null ? image : placeholder,
+                      ),
+                    ),
                     errorBuilder: (_, _, _) => placeholder,
                   )
                 : CachedNetworkImage(
