@@ -74,140 +74,141 @@ class _CinemaPageState extends State<CinemaPage> {
           title: '${cinema?.name ?? widget.slug} · CNV',
           color: CnvColors.background,
           child: Scaffold(
-          appBar: AppBar(
-            title: Text(cinema?.name ?? widget.slug, overflow: TextOverflow.ellipsis),
-            actions: [
-              if (cinema != null && cinema.url.isNotEmpty)
-                IconButton(
-                  tooltip: 'Sito del cinema',
-                  icon: const Icon(Icons.open_in_new),
-                  onPressed: () => openLink(context, cinema.url),
-                ),
-            ],
-          ),
-          body: RefreshIndicator(
-            onRefresh: widget.store.refresh,
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(12, 12, 12, BottomPadding.of(context, minimum: 24)),
-              children: [
-                NotUpdatedNotice(data: data, cinema: widget.slug),
-                if (days.isEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 30),
-                    child: Text('Il sito del cinema non ha spettacoli in programma.',
-                        textAlign: TextAlign.center, style: TextStyle(color: CnvColors.textMuted)),
+            appBar: AppBar(
+              title: Text(cinema?.name ?? widget.slug, overflow: TextOverflow.ellipsis),
+              actions: [
+                if (cinema != null && cinema.url.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Sito del cinema',
+                    icon: const Icon(Icons.open_in_new),
+                    onPressed: () => openLink(context, cinema.url),
                   ),
-                  if (cinema != null && cinema.url.isNotEmpty)
-                    Center(
-                      child: OutlinedButton.icon(
-                        onPressed: () => openLink(context, cinema.url),
-                        icon: const Icon(Icons.open_in_new, size: 18),
-                        label: const Text('Controlla sul sito del cinema'),
-                      ),
-                    ),
-                ] else ...[
-                  SizedBox(
-                    height: 40,
-                    // Wider than the page by its 12px padding on each side: the chips slide to the screen edge
-                    child: LayoutBuilder(
-                      builder: (context, box) => OverflowBox(
-                        minWidth: box.maxWidth + 24,
-                        maxWidth: box.maxWidth + 24,
-                        child: ShaderMask(
-                          // the end edge fades: there is more to scroll
-                          shaderCallback: (Rect bounds) => const LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [Colors.white, Colors.white, Colors.white, Colors.transparent],
-                            stops: [0.0, 0.0, 0.88, 1.0],
-                          ).createShader(bounds),
-                          blendMode: BlendMode.dstIn,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            children: [
-                              for (final d in days)
-                                Padding(
-                                  key: _dayKeys.putIfAbsent(d, GlobalKey.new),
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: ChoiceChip(
-                                    label: Text(d == programme.day ? 'Oggi' : capitalize(formatDay(d, programme.day))),
-                                    selected: d == selected,
-                                    showCheckmark: false,
-                                    onSelected: (_) => _showDay(d),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text("Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.",
-                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
-                  if (todayOver)
-                    Container(
-                      margin: const EdgeInsets.only(top: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: CnvColors.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: const Border(left: BorderSide(color: CnvColors.yellow, width: 3)),
-                      ),
-                      child: Text('Oggi non ci sono altri spettacoli: ecco quelli di ${formatDay(selected, programme.day)}.',
-                          style: const TextStyle(fontSize: 13)),
-                    ),
-                  const SizedBox(height: 10),
-                  for (final f in films)
-                    if (data.filmsById[f.key] case final film?)
-                      Card(
-                        color: CnvColors.surface,
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              GestureDetector(
-                                onTap: () => _openFilm(context, film.id),
-                                child: Poster(url: film.poster, width: 58),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    InkWell(
-                                      onTap: () => _openFilm(context, film.id),
-                                      child: Text(film.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    FilmMeta(film: film),
-                                    SalaList(bySala: f.value),
-                                    const SizedBox(height: 8),
-                                    VoteButtons(film: film, data: data, today: programme.day),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                ],
-                if (coming.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  const Text('In arrivo qui', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const Text('I film che questo cinema proietterà o annuncia.',
-                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
-                  const SizedBox(height: 8),
-                  for (final c in coming)
-                    ComingCard(coming: c, today: programme.day, store: widget.store, showCinemas: false),
-                ],
               ],
             ),
+            body: RefreshIndicator(
+              onRefresh: widget.store.refresh,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(12, 12, 12, BottomPadding.of(context, minimum: 24)),
+                children: [
+                  NotUpdatedNotice(data: data, cinema: widget.slug),
+                  if (days.isEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 30),
+                      child: Text('Il sito del cinema non ha spettacoli in programma.',
+                          textAlign: TextAlign.center, style: TextStyle(color: CnvColors.textMuted)),
+                    ),
+                    if (cinema != null && cinema.url.isNotEmpty)
+                      Center(
+                        child: OutlinedButton.icon(
+                          onPressed: () => openLink(context, cinema.url),
+                          icon: const Icon(Icons.open_in_new, size: 18),
+                          label: const Text('Controlla sul sito del cinema'),
+                        ),
+                      ),
+                  ] else ...[
+                    SizedBox(
+                      height: 40,
+                      // Wider than the page by its 12px padding on each side: the chips slide to the screen edge
+                      child: LayoutBuilder(
+                        builder: (context, box) => OverflowBox(
+                          minWidth: box.maxWidth + 24,
+                          maxWidth: box.maxWidth + 24,
+                          child: ShaderMask(
+                            // the end edge fades: there is more to scroll
+                            shaderCallback: (Rect bounds) => const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [Colors.white, Colors.white, Colors.white, Colors.transparent],
+                              stops: [0.0, 0.0, 0.88, 1.0],
+                            ).createShader(bounds),
+                            blendMode: BlendMode.dstIn,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              children: [
+                                for (final d in days)
+                                  Padding(
+                                    key: _dayKeys.putIfAbsent(d, GlobalKey.new),
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ChoiceChip(
+                                      label: Text(d == programme.day ? 'Oggi' : capitalize(formatDay(d, programme.day))),
+                                      selected: d == selected,
+                                      showCheckmark: false,
+                                      onSelected: (_) => _showDay(d),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text("Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.",
+                        style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                    if (todayOver)
+                      Container(
+                        margin: const EdgeInsets.only(top: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: CnvColors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: const Border(left: BorderSide(color: CnvColors.yellow, width: 3)),
+                        ),
+                        child: Text('Oggi non ci sono altri spettacoli: ecco quelli di ${formatDay(selected, programme.day)}.',
+                            style: const TextStyle(fontSize: 13)),
+                      ),
+                    const SizedBox(height: 10),
+                    for (final f in films)
+                      if (data.filmsById[f.key] case final film?)
+                        Card(
+                          color: CnvColors.surface,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                GestureDetector(
+                                  onTap: () => _openFilm(context, film.id),
+                                  child: Poster(url: film.poster, width: 58),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      InkWell(
+                                        onTap: () => _openFilm(context, film.id),
+                                        child: Text(film.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      FilmMeta(film: film),
+                                      SalaList(bySala: f.value),
+                                      const SizedBox(height: 8),
+                                      VoteButtons(film: film, data: data, today: programme.day),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                  ],
+                  if (coming.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const Text('In arrivo qui', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    const Text('I film che questo cinema proietterà o annuncia.',
+                        style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                    const SizedBox(height: 8),
+                    for (final c in coming)
+                      ComingCard(coming: c, today: programme.day, store: widget.store, showCinemas: false),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ));
+        );
       },
     );
   }

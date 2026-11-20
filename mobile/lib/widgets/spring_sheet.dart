@@ -71,7 +71,7 @@ class SpringSheetRoute<T> extends PopupRoute<T> {
   bool get barrierDismissible => true;
   
   @override
-  String? get barrierLabel => null;
+  String? get barrierLabel => 'Chiudi';
   
   @override
   Duration get transitionDuration => const Duration(milliseconds: 300);

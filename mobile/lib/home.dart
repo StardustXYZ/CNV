@@ -120,47 +120,48 @@ class _HomeShellState extends State<HomeShell> {
           title: '${cnvPages[_current].label} · CNV',
           color: CnvColors.background,
           child: Scaffold(
-          drawer: CinemaDrawer(store: _store), // ☰: the cinemas, as the menu of the web version
-          appBar: AppBar(
-            title: const CnvTitle(),
-            actions: [
-              IconButton(
-                tooltip: 'Aggiorna i dati',
-                onPressed: _store.refreshing ? null : _store.refresh,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-            bottom: DataStatusBar(store: _store),
+            drawer: CinemaDrawer(store: _store), // ☰: the cinemas, as the menu of the web version
+            appBar: AppBar(
+              title: const CnvTitle(),
+              actions: [
+                IconButton(
+                  tooltip: 'Aggiorna i dati',
+                  onPressed: _store.refreshing ? null : _store.refresh,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+              bottom: DataStatusBar(store: _store),
+            ),
+            body: Column(
+              children: [
+                const UpdateBanner(),
+                Expanded(
+                  child: _store.state == LoadState.error
+                      ? NoDataMessage(onRetry: _store.refresh, retrying: _store.refreshing)
+                      : PageView(
+                          controller: _pager,
+                          onPageChanged: (index) => setState(() => _current = index),
+                          children: [
+                            if (ready) InSalaPage(store: _store, scroll: _scrollers[0]) else PagePlaceholder(page: cnvPages[0]),
+                            if (ready) InUscitaPage(store: _store, scroll: _scrollers[1]) else PagePlaceholder(page: cnvPages[1]),
+                            if (ready) WatchlistPage(store: _store, scroll: _scrollers[2]) else PagePlaceholder(page: cnvPages[2]),
+                            if (ready) VistiPage(store: _store, scroll: _scrollers[3]) else PagePlaceholder(page: cnvPages[3]),
+                            VotiPage(store: _store, scroll: _scrollers[4]),
+                          ],
+                        ),
+                ),
+              ],
+            ),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: _current,
+              onDestinationSelected: _onTab,
+              destinations: [
+                for (final page in cnvPages)
+                  NavigationDestination(icon: Icon(page.icon), selectedIcon: Icon(page.selectedIcon), label: page.label),
+              ],
+            ),
           ),
-          body: Column(
-            children: [
-              const UpdateBanner(),
-              Expanded(
-                child: _store.state == LoadState.error
-                    ? NoDataMessage(onRetry: _store.refresh, retrying: _store.refreshing)
-                    : PageView(
-                        controller: _pager,
-                        onPageChanged: (index) => setState(() => _current = index),
-                        children: [
-                          if (ready) InSalaPage(store: _store, scroll: _scrollers[0]) else PagePlaceholder(page: cnvPages[0]),
-                          if (ready) InUscitaPage(store: _store, scroll: _scrollers[1]) else PagePlaceholder(page: cnvPages[1]),
-                          if (ready) WatchlistPage(store: _store, scroll: _scrollers[2]) else PagePlaceholder(page: cnvPages[2]),
-                          if (ready) VistiPage(store: _store, scroll: _scrollers[3]) else PagePlaceholder(page: cnvPages[3]),
-                          VotiPage(store: _store, scroll: _scrollers[4]),
-                        ],
-                      ),
-              ),
-            ],
-          ),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _current,
-            onDestinationSelected: _onTab,
-            destinations: [
-              for (final page in cnvPages)
-                NavigationDestination(icon: Icon(page.icon), selectedIcon: Icon(page.selectedIcon), label: page.label),
-            ],
-          ),
-        ));
+        );
       },
     );
   }

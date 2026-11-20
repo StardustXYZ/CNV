@@ -280,70 +280,71 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
           title: 'Accedi · CNV',
           color: CnvColors.background,
           child: Scaffold(
-          appBar: AppBar(title: Text(_register ? 'Crea un account' : 'Accedi con email')),
-          body: ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
-            children: [
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('Ho già un account')),
-                  ButtonSegment(value: true, label: Text('Sono nuovo')),
-                ],
-                selected: {_register},
-                onSelectionChanged: (s) => setState(() {
-                  _register = s.first;
-                  _problem = null;
-                }),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.email],
-                autocorrect: false,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _password,
-                obscureText: _hidden,
-                textInputAction: TextInputAction.done,
-                autofillHints: [_register ? AutofillHints.newPassword : AutofillHints.password],
-                onSubmitted: (_) => _submit(),
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  helperText: _register ? 'Almeno 6 caratteri' : null,
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    tooltip: _hidden ? 'Mostra la password' : 'Nascondi la password',
-                    icon: Icon(_hidden ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _hidden = !_hidden),
+            appBar: AppBar(title: Text(_register ? 'Crea un account' : 'Accedi con email')),
+            body: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
+              children: [
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('Ho già un account')),
+                    ButtonSegment(value: true, label: Text('Sono nuovo')),
+                  ],
+                  selected: {_register},
+                  onSelectionChanged: (s) => setState(() {
+                    _register = s.first;
+                    _problem = null;
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  autocorrect: false,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _password,
+                  obscureText: _hidden,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: [_register ? AutofillHints.newPassword : AutofillHints.password],
+                  onSubmitted: (_) => _submit(),
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    helperText: _register ? 'Almeno 6 caratteri' : null,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      tooltip: _hidden ? 'Mostra la password' : 'Nascondi la password',
+                      icon: Icon(_hidden ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setState(() => _hidden = !_hidden),
+                    ),
                   ),
                 ),
-              ),
-              if (_problem != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(_problem!, style: const TextStyle(color: CnvColors.red)),
+                if (_problem != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(_problem!, style: const TextStyle(color: CnvColors.red)),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: busy ? null : _submit,
+                  child: Text(busy ? 'Un momento…' : (_register ? 'Crea l’account' : 'Accedi')),
                 ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: busy ? null : _submit,
-                child: Text(busy ? 'Un momento…' : (_register ? 'Crea l’account' : 'Accedi')),
-              ),
-              if (_register)
-                const Padding(
-                  padding: EdgeInsets.only(top: 10),
-                  child: Text('Ti arriva un’email di conferma: l’account vale solo dopo aver aperto il suo link.',
-                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
-                )
-              else
-                TextButton(onPressed: busy ? null : _reset, child: const Text('Password dimenticata?')),
-            ],
+                if (_register)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Text('Ti arriva un’email di conferma: l’account vale solo dopo aver aperto il suo link.',
+                        style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                  )
+                else
+                  TextButton(onPressed: busy ? null : _reset, child: const Text('Password dimenticata?')),
+              ],
+            ),
           ),
-        ));
+        );
       },
     );
   }
@@ -409,48 +410,49 @@ class _AllowListPageState extends State<AllowListPage> {
           title: 'Ammessi · CNV',
           color: CnvColors.background,
           child: Scaffold(
-          appBar: AppBar(title: const Text('Ammessi')),
-          body: ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
-            children: [
-              const Text('Chi è in questa lista può usare il suo account in CNV, con Google o con email e password '
-                  '(l’email va confermata). Ognuno vede solo i suoi voti; tu non vedi i loro.',
-                  style: TextStyle(fontSize: 13, color: CnvColors.textMuted, height: 1.35)),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _add(),
-                      decoration: const InputDecoration(labelText: 'Email da aggiungere', border: OutlineInputBorder(), isDense: true),
+            appBar: AppBar(title: const Text('Ammessi')),
+            body: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
+              children: [
+                const Text('Chi è in questa lista può usare il suo account in CNV, con Google o con email e password '
+                    '(l’email va confermata). Ognuno vede solo i suoi voti; tu non vedi i loro.',
+                    style: TextStyle(fontSize: 13, color: CnvColors.textMuted, height: 1.35)),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _add(),
+                        decoration: const InputDecoration(labelText: 'Email da aggiungere', border: OutlineInputBorder(), isDense: true),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(onPressed: widget.account.busy ? null : _add, child: const Text('Aggiungi')),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                if (list.isEmpty)
+                  const Text('Nessuno per ora, a parte te.', style: TextStyle(color: CnvColors.textMuted)),
+                for (final email in list)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(email),
+                    trailing: IconButton(
+                      tooltip: 'Togli $email',
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: widget.account.busy ? null : () => _remove(email),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(onPressed: widget.account.busy ? null : _add, child: const Text('Aggiungi')),
-                ],
-              ),
-              const SizedBox(height: 14),
-              if (list.isEmpty)
-                const Text('Nessuno per ora, a parte te.', style: TextStyle(color: CnvColors.textMuted)),
-              for (final email in list)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_outline),
-                  title: Text(email),
-                  trailing: IconButton(
-                    tooltip: 'Togli $email',
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: widget.account.busy ? null : () => _remove(email),
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ));
+        );
       },
     );
   }

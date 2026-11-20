@@ -56,19 +56,20 @@ class PrivacyPage extends StatelessWidget {
       title: 'Privacy · CNV',
       color: CnvColors.background,
       child: Scaffold(
-      appBar: AppBar(title: const Text('Privacy')),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, BottomPadding.of(context, minimum: 28)),
-        children: [
-          const Text('Quali dati usa CNV', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
-          for (final (title, text) in _sections) ...[
-            const SizedBox(height: 16),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(text, style: const TextStyle(fontSize: 14, height: 1.45, color: CnvColors.text)),
+        appBar: AppBar(title: const Text('Privacy')),
+        body: ListView(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, BottomPadding.of(context, minimum: 28)),
+          children: [
+            const Text('Quali dati usa CNV', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+            for (final (title, text) in _sections) ...[
+              const SizedBox(height: 16),
+              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(text, style: const TextStyle(fontSize: 14, height: 1.45, color: CnvColors.text)),
+            ],
           ],
-        ],
+        ),
       ),
-    ));
+    );
   }
 }

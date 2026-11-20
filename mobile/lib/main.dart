@@ -160,18 +160,15 @@ class _CnvAppState extends State<CnvApp> {
               localizationsDelegates: GlobalMaterialLocalizations.delegates,
               // On a wide screen (the browser on a PC) the app keeps a phone's width, centered.
               // The system text size is followed only up to x1.1, so the layouts do not break
-              builder: (context, child) {
-                final media = MediaQuery.of(context);
-                return MediaQuery(
-                  data: media.copyWith(textScaler: media.textScaler.clamp(maxScaleFactor: 1.1)),
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: Center(
-                      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: phoneWidth), child: child),
-                    ),
+              builder: (context, child) => MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.1,
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: Center(
+                    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: phoneWidth), child: child),
                   ),
-                );
-              },
+                ),
+              ),
               home: HomeShell(store: _store, changelog: widget.changelog),
             ),
           ),

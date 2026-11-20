@@ -34,126 +34,127 @@ class FilmPage extends StatelessWidget {
           title: '${current.title} · CNV',
           color: CnvColors.background,
           child: Scaffold(
-          appBar: AppBar(title: Text(current.title, overflow: TextOverflow.ellipsis)),
-          body: RefreshIndicator(
-            onRefresh: store.refresh,
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(12, 12, 12, BottomPadding.of(context, minimum: 24)),
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Poster(url: current.poster, width: 120),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(current.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, height: 1.2)),
-                          const SizedBox(height: 6),
-                          FilmMeta(film: current),
-                          const SizedBox(height: 6),
-                          Text(statusLine(current, releases, today), style: const TextStyle(fontSize: 13, color: CnvColors.textMuted)),
-                          if (current.tmdbId != null)
-                            TextButton.icon(
-                              style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                              onPressed: () => openLink(context, 'https://www.themoviedb.org/movie/${current.tmdbId}'),
-                              icon: const Icon(Icons.open_in_new, size: 16),
-                              label: const Text('Scheda su TMDB'),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (current.director != null || current.cast != null || current.plot != null) ...[
-                  const SizedBox(height: 12),
-                  if (current.director case final d?) _Credit(label: 'Regia', names: d),
-                  if (current.cast case final c?) _Credit(label: 'Con', names: c),
-                  if (current.plot case final p?) Padding(padding: const EdgeInsets.only(top: 6), child: PlotText(p)),
-                ],
-                const SizedBox(height: 14),
-                VoteButtons(film: current, data: data, today: today),
-                const SizedBox(height: 18),
-                if (cinemas.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Text(_noShows(current, data, today), textAlign: TextAlign.center, style: const TextStyle(color: CnvColors.textMuted)),
-                  )
-                else ...[
-                  const Text('Spettacoli', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const Text("Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.",
-                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
-                  const SizedBox(height: 8),
-                  for (final c in cinemas)
-                    Card(
-                      color: CnvColors.surface,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
+            appBar: AppBar(title: Text(current.title, overflow: TextOverflow.ellipsis)),
+            body: RefreshIndicator(
+              onRefresh: store.refresh,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(12, 12, 12, BottomPadding.of(context, minimum: 24)),
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Poster(url: current.poster, width: 120),
+                      const SizedBox(width: 14),
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            InkWell(
-                              onTap: () => openCinema(context, c.cinema, store),
-                              child: Text(data.cinemasBySlug[c.cinema]?.name ?? c.cinema,
-                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                            ),
-                            for (final d in c.days)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    SizedBox(
-                                      width: 76,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(top: 12),
-                                        child: Text(capitalize(formatDay(d.key, today)),
-                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                                      ),
-                                    ),
-                                    Expanded(child: SalaList(bySala: d.value)),
-                                  ],
-                                ),
+                            Text(current.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, height: 1.2)),
+                            const SizedBox(height: 6),
+                            FilmMeta(film: current),
+                            const SizedBox(height: 6),
+                            Text(statusLine(current, releases, today), style: const TextStyle(fontSize: 13, color: CnvColors.textMuted)),
+                            if (current.tmdbId != null)
+                              TextButton.icon(
+                                style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                                onPressed: () => openLink(context, 'https://www.themoviedb.org/movie/${current.tmdbId}'),
+                                icon: const Icon(Icons.open_in_new, size: 16),
+                                label: const Text('Scheda su TMDB'),
                               ),
                           ],
                         ),
                       ),
-                    ),
-                ],
-                if (elsewhere.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      'In arrivo anche: ${elsewhere.map((r) => '${data.cinemasBySlug[r.cinema]?.name ?? r.cinema}${r.date != null ? ' (dal ${longDate(r.date!, today)})' : ''}').join(', ')}',
-                      style: const TextStyle(fontSize: 13, color: CnvColors.textMuted),
-                    ),
-                  ),
-                if (_sitePages(data, current, releases) case final pages when pages.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  const Text('Sui siti dei cinema', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const Text('La scheda del film sul sito di ogni cinema che lo proietta o lo annuncia.',
-                      style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final p in pages)
-                        ActionChip(
-                          avatar: const Icon(Icons.language, size: 18),
-                          label: Text(data.cinemasBySlug[p.key]?.name ?? p.key),
-                          tooltip: 'Scheda sul sito',
-                          onPressed: () => openLink(context, p.value),
-                        ),
                     ],
                   ),
+                  if (current.director != null || current.cast != null || current.plot != null) ...[
+                    const SizedBox(height: 12),
+                    if (current.director case final d?) _Credit(label: 'Regia', names: d),
+                    if (current.cast case final c?) _Credit(label: 'Con', names: c),
+                    if (current.plot case final p?) Padding(padding: const EdgeInsets.only(top: 6), child: PlotText(p)),
+                  ],
+                  const SizedBox(height: 14),
+                  VoteButtons(film: current, data: data, today: today),
+                  const SizedBox(height: 18),
+                  if (cinemas.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Text(_noShows(current, data, today), textAlign: TextAlign.center, style: const TextStyle(color: CnvColors.textMuted)),
+                    )
+                  else ...[
+                    const Text('Spettacoli', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    const Text("Tocca un orario per aprire la pagina d'acquisto sul sito del cinema.",
+                        style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                    const SizedBox(height: 8),
+                    for (final c in cinemas)
+                      Card(
+                        color: CnvColors.surface,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              InkWell(
+                                onTap: () => openCinema(context, c.cinema, store),
+                                child: Text(data.cinemasBySlug[c.cinema]?.name ?? c.cinema,
+                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                              ),
+                              for (final d in c.days)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      SizedBox(
+                                        width: 76,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(top: 12),
+                                          child: Text(capitalize(formatDay(d.key, today)),
+                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                        ),
+                                      ),
+                                      Expanded(child: SalaList(bySala: d.value)),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                  if (elsewhere.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'In arrivo anche: ${elsewhere.map((r) => '${data.cinemasBySlug[r.cinema]?.name ?? r.cinema}${r.date != null ? ' (dal ${longDate(r.date!, today)})' : ''}').join(', ')}',
+                        style: const TextStyle(fontSize: 13, color: CnvColors.textMuted),
+                      ),
+                    ),
+                  if (_sitePages(data, current, releases) case final pages when pages.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    const Text('Sui siti dei cinema', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    const Text('La scheda del film sul sito di ogni cinema che lo proietta o lo annuncia.',
+                        style: TextStyle(fontSize: 12, color: CnvColors.textMuted)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final p in pages)
+                          ActionChip(
+                            avatar: const Icon(Icons.language, size: 18),
+                            label: Text(data.cinemasBySlug[p.key]?.name ?? p.key),
+                            tooltip: 'Scheda sul sito',
+                            onPressed: () => openLink(context, p.value),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-        ));
+        );
       },
     );
   }
