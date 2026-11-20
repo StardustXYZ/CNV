@@ -6,6 +6,7 @@ import '../data/account.dart';
 import '../data/notifications.dart';
 import '../data/personal.dart';
 import '../theme.dart';
+import '../widgets/bottom_padding.dart';
 import '../widgets/letterboxd_widgets.dart' show say;
 import '../data/device_words.dart';
 
@@ -278,7 +279,7 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
         return Scaffold(
           appBar: AppBar(title: Text(_register ? 'Crea un account' : 'Accedi con email')),
           body: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
             children: [
               SegmentedButton<bool>(
                 segments: const [
@@ -401,7 +402,7 @@ class _AllowListPageState extends State<AllowListPage> {
         return Scaffold(
           appBar: AppBar(title: const Text('Ammessi')),
           body: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16).copyWith(bottom: BottomPadding.of(context, minimum: 16)),
             children: [
               const Text('Chi è in questa lista può usare il suo account in CNV, con Google o con email e password '
                   '(l’email va confermata). Ognuno vede solo i suoi voti; tu non vedi i loro.',

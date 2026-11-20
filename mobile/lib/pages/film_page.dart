@@ -6,6 +6,7 @@ import '../data/programme.dart';
 import '../data/repository.dart';
 import '../data/schedule.dart';
 import '../theme.dart';
+import '../widgets/bottom_padding.dart';
 import '../widgets/film_widgets.dart';
 import '../widgets/vote_buttons.dart';
 import 'cinema_page.dart';
@@ -34,7 +35,7 @@ class FilmPage extends StatelessWidget {
           body: RefreshIndicator(
             onRefresh: store.refresh,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+              padding: EdgeInsets.fromLTRB(12, 12, 12, BottomPadding.of(context, minimum: 24)),
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,

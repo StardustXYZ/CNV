@@ -6,6 +6,7 @@ import '../data/format.dart';
 import '../data/programme.dart';
 import '../data/repository.dart';
 import '../theme.dart';
+import '../widgets/bottom_padding.dart';
 import '../widgets/film_widgets.dart';
 import '../widgets/vote_buttons.dart';
 import 'film_page.dart';
@@ -75,7 +76,7 @@ class _CinemaPageState extends State<CinemaPage> {
           body: RefreshIndicator(
             onRefresh: widget.store.refresh,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+              padding: EdgeInsets.fromLTRB(12, 12, 12, BottomPadding.of(context, minimum: 24)),
               children: [
                 NotUpdatedNotice(data: data, cinema: widget.slug),
                 if (days.isEmpty) ...[
@@ -199,7 +200,9 @@ class CinemaDrawer extends StatelessWidget {
     return Drawer(
       backgroundColor: CnvColors.surface,
       child: SafeArea(
+        bottom: false,
         child: ListView(
+          padding: EdgeInsets.only(bottom: BottomPadding.of(context)),
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, 8),

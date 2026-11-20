@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/device_words.dart';
 import '../theme.dart';
+import '../widgets/bottom_padding.dart';
 
 /// "Privacy": what CNV keeps, where, who sees it, and how to delete it. In plain words.
 class PrivacyPage extends StatelessWidget {
@@ -54,7 +55,7 @@ class PrivacyPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Privacy')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, BottomPadding.of(context, minimum: 28)),
         children: [
           const Text('Quali dati usa CNV', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
           for (final (title, text) in _sections) ...[
