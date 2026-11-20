@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'data/account.dart';
+import 'data/changelog.dart';
 import 'data/firebase_account.dart';
 import 'data/firebase_push.dart';
 import 'data/firebase_web.dart';
@@ -34,10 +35,13 @@ Future<void> main() async {
   }
   final account = AccountStore(backend);
   UpdateStore? updates;
+  ChangelogStore? changelog;
   // In the browser the page is always the latest version, and notifications arrive on the phone
   if (!kIsWeb) {
     try {
-      updates = UpdateStore(currentVersion: (await PackageInfo.fromPlatform()).version);
+      final version = (await PackageInfo.fromPlatform()).version;
+      updates = UpdateStore(currentVersion: version);
+      changelog = ChangelogStore(currentVersion: version);
     } catch (err) {
       debugPrint('Versione non letta: $err');
     }
@@ -45,6 +49,7 @@ Future<void> main() async {
   runApp(
     CnvApp(
       updates: updates,
+      changelog: changelog,
       account: account,
       notifications: !kIsWeb && backend != null && push != null ? NotificationStore(account, backend, push) : null,
       foreground: kIsWeb ? null : push?.foreground(),
@@ -65,6 +70,7 @@ class CnvApp extends StatefulWidget {
     this.notifications,
     this.foreground,
     this.updates,
+    this.changelog,
   });
 
   final DataStore? store; // given by the tests; otherwise the app downloads the real data
@@ -73,6 +79,7 @@ class CnvApp extends StatefulWidget {
   final NotificationStore? notifications; // without it, no notifications
   final Stream<String>? foreground; // notifications arrived with the app open
   final UpdateStore? updates; // newer versions on GitHub (none in the tests)
+  final ChangelogStore? changelog; // the novelties of the version just installed (none in the tests)
 
   @override
   State<CnvApp> createState() => _CnvAppState();
@@ -154,7 +161,7 @@ class _CnvAppState extends State<CnvApp> {
                   child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: phoneWidth), child: child),
                 ),
               ),
-              home: HomeShell(store: _store),
+              home: HomeShell(store: _store, changelog: widget.changelog),
             ),
           ),
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'data/changelog.dart';
 import 'data/repository.dart';
 import 'pages/cinema_page.dart';
 import 'pages/in_sala_page.dart';
@@ -58,9 +59,10 @@ const cnvPages = [
 /// The app's frame: title bar with the data status, the pages side by side (swipe to
 /// move) and the bottom menu.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.store});
+  const HomeShell({super.key, required this.store, this.changelog});
 
   final DataStore store;
+  final ChangelogStore? changelog;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -70,6 +72,17 @@ class _HomeShellState extends State<HomeShell> {
   final _pager = PageController();
   late final DataStore _store = widget.store;
   int _current = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // On the first open after an update: what is new, once
+    widget.changelog?.unseen().then((changes) async {
+      if (changes.isEmpty || !mounted) return;
+      await widget.changelog!.markSeen();
+      if (mounted) await showChangelog(context, changes);
+    });
+  }
 
   @override
   void dispose() {
