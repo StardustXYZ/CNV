@@ -29,8 +29,9 @@ class PrivacyPage extends StatelessWidget {
     ),
     (
       'Notifiche',
-      'Ogni notte un programma su GitHub controlla i film nuovi in sala e, se le hai attivate, ti manda '
-          'la notifica, mettendo per primi i film che hai segnato V. Per farlo legge la tua scelta, i tuoi '
+      'Ogni notte un programma su GitHub controlla i film nuovi in sala e quelli agli ultimi giorni e, se '
+          'le hai attivate, ti manda la notifica: i film nuovi con quelli che hai segnato V per primi, gli '
+          'ultimi giorni solo dei tuoi V. Per farlo legge le tue scelte, i tuoi '
           'voti e i codici dei tuoi telefoni; non li salva altrove e non scrive nel registro né la tua '
           'email né i tuoi voti.'
     ),

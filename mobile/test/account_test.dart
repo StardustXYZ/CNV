@@ -98,6 +98,14 @@ class FakeBackend implements AccountBackend {
   @override
   Future<void> setNotifyMode(String uid, String mode) async => notify[uid] = mode;
 
+  final lastDaysOn = <String, bool>{}; // uid -> "ultimi giorni"
+
+  @override
+  Future<bool> lastDays(String uid) async => lastDaysOn[uid] ?? false;
+
+  @override
+  Future<void> setLastDays(String uid, bool on) async => lastDaysOn[uid] = on;
+
   @override
   Future<void> savePhone(String uid, String phone, String token) async => (phones[uid] ??= {})[phone] = token;
 
@@ -111,6 +119,7 @@ class FakeBackend implements AccountBackend {
     final uid = _current!.uid;
     phones.remove(uid);
     notify.remove(uid);
+    lastDaysOn.remove(uid);
     cloud.docs.remove(uid);
     deleted.add(uid);
     _set(null);

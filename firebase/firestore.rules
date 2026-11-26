@@ -41,8 +41,8 @@ service cloud.firestore {
     }
 
     // The account's own data: votes, films seen, what already went to Letterboxd, and which
-    // notifications it wants ("notify": all, v or off). Nobody else sees it, not even the
-    // administrator
+    // notifications it wants ("notify": all, v or off; "lastDays": the last days of its V
+    // films, true or false). Nobody else sees it, not even the administrator
     match /utenti/{uid} {
       allow read, delete: if isUser(uid);
       allow create, update: if isUser(uid) && validPersonal(request.resource.data);
@@ -64,14 +64,15 @@ service cloud.firestore {
     // V, ? or S (✓), once stored, would make every later write of that account fail.
     // The values of the other maps cannot be checked one by one: the rules have no loop
     function validPersonal(p) {
-      return p.keys().hasOnly(['votes', 'seen', 'exported', 'diary', 'updated', 'notify'])
+      return p.keys().hasOnly(['votes', 'seen', 'exported', 'diary', 'updated', 'notify', 'lastDays'])
         && (!('votes' in p) || (p.votes is map && p.votes.size() <= 5000
             && p.votes.values().hasOnly(['V', '?', 'S'])))
         && (!('seen' in p) || (p.seen is map && p.seen.size() <= 5000))
         && (!('exported' in p) || (p.exported is map && p.exported.size() <= 5000))
         && (!('diary' in p) || (p.diary is map && p.diary.size() <= 5000))
         && (!('updated' in p) || p.updated is timestamp)
-        && (!('notify' in p) || p.notify in ['all', 'v', 'off']);
+        && (!('notify' in p) || p.notify in ['all', 'v', 'off'])
+        && (!('lastDays' in p) || p.lastDays is bool);
     }
 
     function validPhone(phone, t) {

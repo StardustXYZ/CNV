@@ -124,6 +124,50 @@ void main() {
     expect(store.ready, isFalse);
   });
 
+  test('"Ultimi giorni" alone keeps the phone registered; it goes only when both are off', () async {
+    final backend = FakeBackend(), push = FakePush();
+    final (_, store) = await signedIn(backend, push);
+    await store.setLastDays(true);
+    expect(push.asked, 1);
+    expect(store.lastDays, isTrue);
+    expect(store.mode, 'off');
+    expect(backend.lastDaysOn['capo'], isTrue);
+    expect(backend.phones['capo'], {'telefono-prova': 'tok-1'});
+
+    await store.setMode('all');
+    await store.setMode('off'); // the films new in theaters off: the last days still need the phone
+    expect(backend.phones['capo'], {'telefono-prova': 'tok-1'});
+
+    await store.setLastDays(false);
+    expect(backend.lastDaysOn['capo'], isFalse);
+    expect(backend.phones['capo'], isEmpty);
+  });
+
+  test('"Ultimi giorni" with the permission refused stays off', () async {
+    final backend = FakeBackend(), push = FakePush()..allow = false;
+    final (_, store) = await signedIn(backend, push);
+    await store.setLastDays(true);
+    expect(store.lastDays, isFalse);
+    expect(store.problem, contains('permesso'));
+    expect(backend.lastDaysOn['capo'], isNull);
+  });
+
+  test('signed in again with only "Ultimi giorni": it comes back and the phone is registered', () async {
+    final backend = FakeBackend()..lastDaysOn['capo'] = true;
+    final push = FakePush()..granted = true;
+    final (account, store) = await signedIn(backend, push);
+    expect(store.lastDays, isTrue);
+    expect(store.mode, 'off');
+    expect(backend.phones['capo'], {'telefono-prova': 'tok-1'});
+    push.refresh.add('tok-2');
+    await settle();
+    expect(backend.phones['capo'], {'telefono-prova': 'tok-2'});
+    await account.signOut();
+    await settle();
+    expect(backend.phones['capo'], isEmpty);
+    expect(backend.lastDaysOn['capo'], isTrue); // the choice stays in the account
+  });
+
   test('not admitted: nothing to choose', () async {
     final backend = FakeBackend()
       ..accounts['estraneo@example.com'] = 'password'
@@ -161,6 +205,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.notify['capo'], 'v');
     expect(backend.phones['capo'], {'telefono-prova': 'tok-1'});
+
+    await tester.scrollUntilVisible(find.text('Ultimi giorni dei miei V'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('Ultimi giorni dei miei V'));
+    await tester.pumpAndSettle();
+    expect(backend.lastDaysOn['capo'], isTrue);
 
     push.messages.add('🎬 In sala: Hope\nHope');
     await tester.pump();

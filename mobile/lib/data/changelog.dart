@@ -14,8 +14,8 @@ class ChangelogEntry {
 
 /// The novelties of each version. Add a new entry at the TOP for every release.
 const changelog = [
-  ChangelogEntry('1.1.1', [
-    'ESEMPIO: sostituisci questa riga con le novità vere di questa versione.',
+  ChangelogEntry('1.2.0', [
+    'Nelle notifiche, «Ultimi giorni dei miei V»: un avviso quando un film che hai segnato V sta per lasciare tutti i cinema (pagina Voti).',
   ]),
 ];
 

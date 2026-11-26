@@ -143,3 +143,13 @@ test("i voti possono essere solo V, ? o ✓", async () => {
     await assertSucceeds(setDoc(ref, { votes: { 7: "V" } }, { merge: true }));
     await assertFails(setDoc(ref, { votes: { 8: "Q" } }, { merge: true }));
 });
+
+test("l'avviso degli ultimi giorni è solo sì o no", async () => {
+    const ref = doc(as("amico"), "utenti/amico");
+    await assertSucceeds(setDoc(ref, { votes: { 12: "V" }, notify: "off" }));
+    await assertSucceeds(setDoc(ref, { lastDays: true }, { merge: true }));
+    await assertSucceeds(setDoc(ref, { lastDays: false }, { merge: true }));
+    await assertFails(setDoc(ref, { lastDays: "sì" }, { merge: true }));
+    await assertFails(setDoc(ref, { lastDays: 1 }, { merge: true }));
+    await assertFails(setDoc(doc(as("capo"), "utenti/amico"), { lastDays: true }, { merge: true })); // not someone else's
+});

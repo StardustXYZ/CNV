@@ -54,6 +54,10 @@ abstract class AccountBackend {
   /// Notifications: the account's choice (utenti/{uid}.notify) and its phones.
   Future<String?> notifyMode(String uid);
   Future<void> setNotifyMode(String uid, String mode);
+
+  /// The "ultimi giorni" notice for the account's V films (utenti/{uid}.lastDays).
+  Future<bool> lastDays(String uid);
+  Future<void> setLastDays(String uid, bool on);
   Future<void> savePhone(String uid, String phone, String token);
   Future<void> removePhone(String uid, String phone);
 

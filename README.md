@@ -19,7 +19,7 @@ Cinema seguiti: **Andromeda River** (Zumpano), **Citrigno** (Cosenza), **Sale Un
 
 Sul telefono CNV è un'app Android (cartella `mobile/`, in Flutter) che legge i dati aggiornati ogni notte da GitHub: film in sala con gli orari, in uscita con il calendario, pagine dei cinema, voti **V / ? / ✓**, watchlist e diario per Letterboxd, statistiche dei film visti.
 
-Con l'**account** (Google, oppure email e password) i voti si salvano anche online e si ritrovano su un altro telefono, e arrivano le **notifiche** dei film nuovi in sala (tutti, solo i propri V, o nessuna; "Esce oggi" se il primo spettacolo è quel giorno). L'account è su invito: chi gestisce CNV aggiunge le email ammesse dall'app. Ognuno vede solo i suoi voti. Senza account l'app funziona lo stesso, con i voti solo sul telefono.
+Con l'**account** (Google, oppure email e password) i voti si salvano anche online e si ritrovano su un altro telefono, e arrivano le **notifiche** dei film nuovi in sala (tutti, solo i propri V, o nessuna; "Esce oggi" se il primo spettacolo è quel giorno) e, a scelta, gli **ultimi giorni** dei film segnati V. L'account è su invito: chi gestisce CNV aggiunge le email ammesse dall'app. Ognuno vede solo i suoi voti. Senza account l'app funziona lo stesso, con i voti solo sul telefono.
 
 ### Installarla
 
@@ -64,7 +64,7 @@ L'aggiornamento dei dati gira su GitHub, non serve tenere acceso il PC. Sul PC s
 
 Un film è un "evento" solo se lo sono tutti i suoi spettacoli attuali: un'anteprima prima della programmazione normale non basta.
 
-**Ultimi giorni** (in prova): ogni cinema pubblica la programmazione per qualche giorno; conta come pubblicata fino all'ultimo giorno con almeno metà dei film di oggi (dopo restano solo le prevendite). Un film in sala che in tutti i suoi cinema finisce prima di quel giorno è agli ultimi giorni. Per ora il controllo notturno li scrive solo nel registro e li salva, senza notifiche; `python -m app.push verifica` confronta le previsioni passate con gli spettacoli veri.
+**Ultimi giorni**: ogni cinema pubblica la programmazione per qualche giorno; conta come pubblicata fino all'ultimo giorno con almeno metà dei film di oggi (dopo restano solo le prevendite). Un film in sala che in tutti i suoi cinema finisce prima di quel giorno è agli ultimi giorni (gli eventi sono esclusi). Chi ha attivato «Ultimi giorni dei miei V» nell'app riceve un avviso per i film che ha segnato V, una volta per film; di solito arriva l'ultimo giorno o quello prima, perché i cinema pubblicano pochi giorni in anticipo. Le previsioni restano salvate: `python -m app.push verifica` le confronta con gli spettacoli veri (nella prova di novembre 2026: 10 su 10).
 
 Se il sito di un cinema non risponde, i suoi film non vengono considerati spariti, per al massimo 7 giorni. Gli spettacoli che un cinema toglie o sposta spariscono anche da CNV al sync successivo.
 

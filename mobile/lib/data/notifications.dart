@@ -19,9 +19,10 @@ abstract class PushBackend {
   Stream<String> foreground(); // the text of a notification arrived with the app open
 }
 
-/// The notifications of the signed-in account: the choice is kept in the account
-/// (utenti/{uid}.notify) and this phone is registered there (utenti/{uid}/telefoni), so
-/// the nightly job of GitHub knows where to send them. Off until the user turns them on.
+/// The notifications of the signed-in account: the choices are kept in the account
+/// (utenti/{uid}.notify for the films new in theaters, .lastDays for the last days of its V
+/// films) and this phone is registered there (utenti/{uid}/telefoni) while at least one is
+/// on, so the nightly job of GitHub knows where to send them. Off until the user turns them on.
 class NotificationStore extends ChangeNotifier {
   NotificationStore(this.account, this._backend, this._push, {Future<String> Function()? phoneId})
       : _phoneId = phoneId ?? _savedPhoneId {
@@ -39,11 +40,15 @@ class NotificationStore extends ChangeNotifier {
   String? _uid;
 
   String mode = 'off';
+  bool lastDays = false; // "Ultimi giorni dei miei V"
   bool loading = false;
   bool busy = false;
   String? problem;
 
   bool get ready => _uid != null && !loading;
+
+  /// Some notice is on: this phone has to stay registered.
+  bool get anyOn => mode != 'off' || lastDays;
 
   void _update() {
     final user = account.user;
@@ -51,6 +56,7 @@ class NotificationStore extends ChangeNotifier {
     if (uid == _uid) return;
     _uid = uid;
     mode = 'off';
+    lastDays = false;
     problem = null;
     if (uid != null) unawaited(_load(uid));
     notifyListeners();
@@ -61,14 +67,17 @@ class NotificationStore extends ChangeNotifier {
     notifyListeners();
     try {
       final saved = await _backend.notifyMode(uid);
+      final savedLastDays = await _backend.lastDays(uid);
       if (_uid != uid) return;
       mode = notifyModes.contains(saved) ? saved! : 'off';
-      if (mode != 'off') {
+      lastDays = savedLastDays;
+      if (anyOn) {
         if (await _push.hasPermission()) {
           await _register(uid); // back on this phone (or a new token): registered again, without asking
         } else {
           // A new phone, or the app installed again: Android has to give the permission first
           mode = 'off';
+          lastDays = false;
           problem = 'Su questo telefono le notifiche non sono ancora attive: scegli di nuovo quali vuoi.';
         }
       }
@@ -96,7 +105,7 @@ class NotificationStore extends ChangeNotifier {
     try {
       if (value == 'off') {
         await _backend.setNotifyMode(uid, 'off');
-        await _backend.removePhone(uid, await _phoneId());
+        if (!lastDays) await _backend.removePhone(uid, await _phoneId()); // nothing else to send here
       } else {
         if (!await _push.requestPermission()) {
           problem = 'Android non ha dato il permesso: attiva le notifiche di CNV dalle impostazioni del telefono, poi riprova.';
@@ -117,9 +126,40 @@ class NotificationStore extends ChangeNotifier {
     }
   }
 
+  /// "Ultimi giorni dei miei V": turning it on asks Android for the permission, as the other choice.
+  Future<void> setLastDays(bool on) async {
+    final uid = _uid;
+    if (uid == null || on == lastDays) return;
+    busy = true;
+    problem = null;
+    notifyListeners();
+    try {
+      if (on) {
+        if (!await _push.requestPermission()) {
+          problem = 'Android non ha dato il permesso: attiva le notifiche di CNV dalle impostazioni del telefono, poi riprova.';
+          return;
+        }
+        await _register(uid);
+        await _backend.setLastDays(uid, true);
+      } else {
+        await _backend.setLastDays(uid, false);
+        if (mode == 'off') await _backend.removePhone(uid, await _phoneId());
+      }
+      lastDays = on;
+    } on AccountError catch (err) {
+      problem = err.message;
+    } catch (err) {
+      debugPrint('Ultimi giorni non cambiati: $err');
+      problem = 'Non riesco a salvare la scelta. Controlla la connessione e riprova.';
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
   void _onToken(String token) {
     final uid = _uid;
-    if (uid == null || mode == 'off') return;
+    if (uid == null || !anyOn) return;
     unawaited(_phoneId()
         .then((id) => _backend.savePhone(uid, id, token))
         .catchError((Object err) => debugPrint('Nuovo codice notifiche non salvato: $err')));
@@ -129,7 +169,7 @@ class NotificationStore extends ChangeNotifier {
   /// stays in the account, for when it signs in again).
   Future<void> _forgetPhone() async {
     final uid = _uid;
-    if (uid == null || mode == 'off') return;
+    if (uid == null || !anyOn) return;
     try {
       await _backend.removePhone(uid, await _phoneId());
     } catch (err) {

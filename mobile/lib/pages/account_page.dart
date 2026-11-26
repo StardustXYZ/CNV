@@ -515,6 +515,14 @@ class NotificationsBox extends StatelessWidget {
             selected: {store.mode},
             onSelectionChanged: store.ready && !store.busy ? (s) => store.setMode(s.first) : null,
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Ultimi giorni dei miei V', style: TextStyle(fontSize: 14)),
+            subtitle: const Text('Un avviso quando un film che hai segnato V sta per lasciare tutti i cinema.',
+                style: TextStyle(fontSize: 12, color: CnvColors.textMuted, height: 1.35)),
+            value: store.lastDays,
+            onChanged: store.ready && !store.busy ? store.setLastDays : null,
+          ),
           if (store.loading || store.busy)
             const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
           if (store.problem != null)

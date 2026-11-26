@@ -134,7 +134,7 @@ class FakeFirebase:
                       "nuovo": ("Amico@example.com", False)}
         self.phones = {"capo": [("a1", "tok-vivo"), ("a2", "tok-morto"), ("a3", "")], "fuori": [("f1", "tok-f")],
                        "nuovo": [("n1", "tok-n")]}
-        self.sent, self.removed = [], []
+        self.sent, self.removed, self.tags = [], [], []
 
     def allow_list(self):
         return self.allow
@@ -151,8 +151,9 @@ class FakeFirebase:
     def remove_device(self, uid, device):
         self.removed.append((uid, device))
 
-    def send(self, tokens, title, body):
+    def send(self, tokens, title, body, tag="cnv-novita"):
         self.sent.append((tokens, title, body))
+        self.tags.append(tag)
         return [None if t == "tok-vivo" else "gone" for t in tokens]
 
 
@@ -191,7 +192,7 @@ def test_prepare_command_lists_the_last_days_and_the_check_command_runs(tmp_path
     monkeypatch.setattr(sys, "argv", ["app.push", "prepare", "--out", str(tmp_path / "notifica.json")])
     assert push.main() == 0
     out = capsys.readouterr().out
-    assert "Ultimi giorni (solo nel registro, nessuna notifica): 1 film" in out
+    assert "Ultimi giorni: 1 film, da annunciare a chi l'ha chiesto: 1" in out
     assert f"Se ne va: ultimo giorno {today + timedelta(days=1):%d/%m}" in out
 
     monkeypatch.setattr(sys, "argv", ["app.push", "verifica"])
@@ -251,6 +252,101 @@ def test_send_command_marks_the_films_once_sent(tmp_path, monkeypatch, capsys):
     assert push.main() == 0
     with make_session() as db:
         assert db.get(Film, film_id).in_sala_pushed is True
+    engine.dispose()
+
+
+# ------------------------------------------------------------------ ultimi giorni
+
+LEAVING = {
+    "last_days": [{"id": 1, "title": "Clayface", "last_day": "2026-11-26"},
+                  {"id": 2, "title": "Hope", "last_day": "2026-11-27"},
+                  {"id": 3, "title": "Dune", "last_day": "2026-11-29"}],
+    "last_day_ids": [10, 11, 12],
+    "today": "2026-11-26",
+}
+
+
+def test_last_days_notice_only_for_my_v_films_and_only_if_asked():
+    assert push.last_days_notification(LEAVING, {"1": "V"}, True) == ("⏳ Ultimo giorno: Clayface", "Oggi è l'ultimo giorno in sala.")
+    assert push.last_days_notification(LEAVING, {"2": "V"}, True) == ("⏳ Ultimi giorni: Hope", "In sala fino a domani.")
+    assert push.last_days_notification(LEAVING, {"3": "V"}, True) == ("⏳ Ultimi giorni: Dune", "In sala fino a dom 29/11.")
+    assert push.last_days_notification(LEAVING, {"1": "V", "3": "V", "2": "?"}, True) == (
+        "⏳ Ultimi giorni per 2 film che volevi vedere", "Clayface (ultimo giorno oggi), Dune (fino a dom 29/11)")
+    assert push.last_days_notification(LEAVING, {"1": "V"}, False) is None  # switch off
+    assert push.last_days_notification(LEAVING, {"2": "?"}, True) is None  # not a V
+    assert push.last_days_notification(NEWS, {"1": "V"}, True) is None  # nothing leaving tonight
+
+
+def test_a_message_with_only_last_days_is_not_the_test_message():
+    assert push.notification_for(LEAVING, {"1": "V"}, "all") is None
+
+
+def test_send_fcm_sends_the_last_days_apart_to_who_asked():
+    fake = FakeFirebase()
+    fake.docs["capo"]["lastDays"] = True
+    fake.docs["amico"] = {"votes": {"2": "V"}, "notify": "off", "lastDays": True}  # only the last days
+    fake.phones["amico"] = [("b1", "tok-vivo")]
+    counts = push.send_fcm({**NEWS, **LEAVING}, fake)
+    assert fake.sent[:2] == [
+        (["tok-vivo", "tok-morto"], "🎬 In sala: Hope", "Hope · e anche: Clayface, Dune"),
+        (["tok-vivo"], "⏳ Ultimi giorni: Hope", "In sala fino a domani."),  # the phone that is gone is not tried again
+    ]
+    assert fake.tags[:2] == ["cnv-novita", "cnv-ultimi-giorni"]
+    assert (["tok-vivo"], "⏳ Ultimi giorni: Hope", "In sala fino a domani.") in fake.sent[2:]  # amico
+    assert counts["removed"] == 1
+
+
+def test_prepare_announces_each_leaving_film_once(db):
+    from datetime import timedelta
+
+    from app.db.models import LastDays
+
+    today = date(2026, 11, 26)
+    hope = film(db, "Hope", pushed=True)
+    clay = film(db, "Clayface", pushed=True)
+    event = film(db, "Concerto", pushed=True, is_event=True)
+    gone = film(db, "Uscito", status="uscito", pushed=True)
+    told = film(db, "Gia detto", pushed=True)
+    db.add_all([
+        LastDays(film_id=hope.id, last_day=today + timedelta(days=1), found_on=today - timedelta(days=1)),
+        LastDays(film_id=hope.id, last_day=today + timedelta(days=2), found_on=today),  # the latest guess counts
+        LastDays(film_id=clay.id, last_day=today, found_on=today),
+        LastDays(film_id=clay.id, last_day=today - timedelta(days=3), found_on=today - timedelta(days=4)),  # past
+        LastDays(film_id=event.id, last_day=today, found_on=today),
+        LastDays(film_id=gone.id, last_day=today, found_on=today),
+        LastDays(film_id=told.id, last_day=today + timedelta(days=1), found_on=today - timedelta(days=2), notified=True),
+        LastDays(film_id=told.id, last_day=today + timedelta(days=3), found_on=today),  # told 2 days ago: not again
+    ])
+    db.commit()
+    payload = push.prepare(db, today=today)
+    assert payload["last_days"] == [
+        {"id": clay.id, "title": "Clayface", "last_day": "2026-11-26"},
+        {"id": hope.id, "title": "Hope", "last_day": "2026-11-28"},
+    ]
+    assert payload["today"] == "2026-11-26"
+    assert "films" not in payload
+    assert push.mark_last_days(db, payload["last_day_ids"]) == 2
+    assert push.prepare(db, today=today) == {}  # the second run of the night: nothing new
+
+
+def test_send_command_marks_the_last_days_once_sent(tmp_path, monkeypatch, capsys):
+    from app.db.models import LastDays
+
+    engine, make_session, film_id = _session_with_new_film(tmp_path, monkeypatch)
+    with make_session() as db:
+        row = LastDays(film_id=film_id, last_day=date(2026, 11, 27), found_on=date(2026, 11, 26))
+        db.add(row)
+        db.commit()
+        row_id = row.id
+    message = tmp_path / "notifica.json"
+    message.write_text(json.dumps({**LEAVING, "last_day_ids": [row_id]}), encoding="utf-8")
+    monkeypatch.setenv("FIREBASE_SERVICE_ACCOUNT", "{}")
+    monkeypatch.setattr(push, "FirebaseClient", lambda secret: FakeFirebase())
+    monkeypatch.setattr(sys, "argv", ["app.push", "send", str(message)])
+    assert push.main() == 0
+    assert "Ultimi giorni segnati come annunciati: 1" in capsys.readouterr().out
+    with make_session() as db:
+        assert db.get(LastDays, row_id).notified is True
     engine.dispose()
 
 

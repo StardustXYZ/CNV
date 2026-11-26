@@ -13,9 +13,10 @@ show is that very day "esce oggi". Only after a successful ``send`` (or without 
 secret) the films are marked as notified in the database; if ``send`` fails it exits with
 an error and they are announced again at the next run.
 
-``prepare`` also writes in the log the films in their last days (app/services/last_days.py)
-and keeps the guesses, without notifying them yet: ``python -m app.push verifica``
-compares the past guesses with the shows the films really had.
+``prepare`` also finds the films in their last days (app/services/last_days.py), keeps the
+guesses and adds them to the message: the accounts that turned on "ultimi giorni"
+(utenti/{uid}.lastDays) get a separate notice for their V films, once per film. ``python -m
+app.push verifica`` compares the past guesses with the shows the films really had.
 
 ``send`` needs the secret ``FIREBASE_SERVICE_ACCOUNT``; without it, it does nothing.
 """
@@ -33,10 +34,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.engine import SessionLocal, init_db
-from app.db.models import Film, Showtime
+from app.db.models import Film, LastDays, Showtime
 from app.services.last_days import check_guesses, record_leaving
 
 MAX_FILMS = 10  # enough for a notification; the rest is counted ("e altri 3")
+LAST_DAYS_REPEAT = timedelta(days=7)  # a film announced as leaving is not announced again within a week
+WEEKDAYS = ("lun", "mar", "mer", "gio", "ven", "sab", "dom")
 
 
 def _title(film: Film) -> str:
@@ -49,14 +52,46 @@ def new_in_sala(db: Session) -> list[Film]:
     return sorted(films, key=lambda f: _title(f).lower())
 
 
-def prepare(db: Session, test: bool = False, today: date | None = None) -> dict:
-    """The message for the films new in theaters (empty: nothing to say).
+def leaving_to_notify(db: Session, today: date) -> list[LastDays]:
+    """The guesses of films in their last days still to announce: the latest guess of each
+    film in theaters (no events), whose last day has not passed, if it was not announced in
+    the last week."""
+    recent = {
+        film_id
+        for (film_id,) in db.query(LastDays.film_id).filter(
+            LastDays.notified.is_(True), LastDays.found_on >= today - LAST_DAYS_REPEAT
+        )
+    }
+    rows = (
+        db.query(LastDays)
+        .join(Film)
+        .filter(
+            LastDays.notified.is_(False),
+            LastDays.last_day >= today,
+            LastDays.found_on <= today,
+            Film.status == "in_sala",
+            Film.is_event.is_(False),
+        )
+        .order_by(LastDays.found_on.desc(), LastDays.id.desc())
+    )
+    chosen: dict[int, LastDays] = {}
+    for row in rows:
+        if row.film_id not in recent and row.film_id not in chosen:
+            chosen[row.film_id] = row
+    return sorted(chosen.values(), key=lambda r: (r.last_day, _title(r.film).lower()))
 
-    Does not mark them: ``send`` does, once the news has really gone out (``mark_notified``),
-    so a failed night does not swallow them. "ids" lists all of them, also the ones the
-    message only counts. Films shown for the first time today get "today".
+
+def prepare(db: Session, test: bool = False, today: date | None = None) -> dict:
+    """The message for the films new in theaters and the films in their last days (empty:
+    nothing to say).
+
+    Does not mark them: ``send`` does, once the news has really gone out (``mark_notified``,
+    ``mark_last_days``), so a failed night does not swallow them. "ids" lists all the new
+    films, also the ones the message only counts. Films shown for the first time today get
+    "today".
     """
     today = today or date.today()
+    payload: dict = {}
     films = new_in_sala(db)
     if films:
         first_day = dict(
@@ -64,14 +99,24 @@ def prepare(db: Session, test: bool = False, today: date | None = None) -> dict:
             .filter(Showtime.film_id.in_([f.id for f in films]))
             .group_by(Showtime.film_id)
         )
-        return {
+        payload.update({
             "films": [
                 {"id": f.id, "title": _title(f), **({"today": True} if first_day.get(f.id) == today else {})}
                 for f in films[:MAX_FILMS]
             ],
             "more": max(0, len(films) - MAX_FILMS),
             "ids": [f.id for f in films],
-        }
+        })
+    leaving = leaving_to_notify(db, today)
+    if leaving:
+        payload.update({
+            "last_days": [{"id": r.film_id, "title": _title(r.film), "last_day": r.last_day.isoformat()}
+                          for r in leaving[:MAX_FILMS]],
+            "last_day_ids": [r.id for r in leaving],
+            "today": today.isoformat(),
+        })
+    if payload:
+        return payload
     if test:
         return {"title": "CNV", "body": "Le notifiche funzionano: ti scrivo quando un film nuovo arriva in sala."}
     return {}
@@ -86,6 +131,17 @@ def mark_notified(db: Session, ids: list[int]) -> int:
         film.in_sala_pushed = True
     db.commit()
     return len(films)
+
+
+def mark_last_days(db: Session, ids: list[int]) -> int:
+    """Mark the guesses of films in their last days as announced. Returns how many."""
+    if not ids:
+        return 0
+    rows = db.query(LastDays).filter(LastDays.id.in_(ids)).all()
+    for row in rows:
+        row.notified = True
+    db.commit()
+    return len(rows)
 
 
 # ---------------------------------------------------------------------- Android app (FCM)
@@ -107,9 +163,11 @@ def notification_for(payload: dict, votes: dict, mode: str | None) -> tuple[str,
     mode = mode if mode in MODES else "off"  # nobody gets notifications without asking
     if mode == "off" or not payload:
         return None
-    if "films" not in payload:  # the test message
+    if "body" in payload:  # the test message
         return payload.get("title", "CNV"), payload.get("body", "")
-    films = payload["films"]
+    films = payload.get("films") or []
+    if not films:
+        return None
     wanted = [f["title"] for f in films if votes.get(str(f["id"])) == "V"]
     others = [f["title"] for f in films if votes.get(str(f["id"])) != "V"]
     out_today = {f["title"] for f in films if f.get("today")}
@@ -128,6 +186,34 @@ def notification_for(payload: dict, votes: dict, mode: str | None) -> tuple[str,
     else:
         title = one(others[0], new=True) if len(films) == 1 and not more else f"🎬 {len(films) + more} film nuovi in sala"
         body = _join(others) + (f" e altri {more}" if more else "")
+    if len(body) > MAX_BODY:
+        body = body[: MAX_BODY - 1].rstrip(", ") + "…"
+    return title, body
+
+
+def last_days_notification(payload: dict, votes: dict, wanted: bool) -> tuple[str, str] | None:
+    """Title and text of the "ultimi giorni" notice for one account (only its V films), or None."""
+    films = [f for f in payload.get("last_days") or [] if votes.get(str(f["id"])) == "V"]
+    if not wanted or not films:
+        return None
+    today = date.fromisoformat(payload.get("today") or date.today().isoformat())
+
+    def until(f: dict) -> str:
+        day = date.fromisoformat(f["last_day"])
+        if day <= today:
+            return "ultimo giorno oggi"
+        if day == today + timedelta(days=1):
+            return "fino a domani"
+        return f"fino a {WEEKDAYS[day.weekday()]} {day.day}/{day.month}"
+
+    if len(films) == 1:
+        f = films[0]
+        last = date.fromisoformat(f["last_day"]) <= today
+        title = f"⏳ Ultimo giorno: {f['title']}" if last else f"⏳ Ultimi giorni: {f['title']}"
+        body = "Oggi è l'ultimo giorno in sala." if last else f"In sala {until(f)}."
+    else:
+        title = f"⏳ Ultimi giorni per {len(films)} film che volevi vedere"
+        body = ", ".join(f"{f['title']} ({until(f)})" for f in films)
     if len(body) > MAX_BODY:
         body = body[: MAX_BODY - 1].rstrip(", ") + "…"
     return title, body
@@ -182,7 +268,7 @@ class FirebaseClient:
     def remove_device(self, uid: str, device: str) -> None:
         self._db.document(f"utenti/{uid}/telefoni/{device}").delete()
 
-    def send(self, tokens: list[str], title: str, body: str) -> list[str | None]:
+    def send(self, tokens: list[str], title: str, body: str, tag: str = "cnv-novita") -> list[str | None]:
         """Send to each phone; for each one None if delivered, "gone" if the phone is no
         longer reachable (app removed), or the error."""
         from firebase_admin import exceptions, messaging
@@ -195,7 +281,7 @@ class FirebaseClient:
                 android=messaging.AndroidConfig(
                     priority="high",
                     ttl=TTL_FCM,
-                    notification=messaging.AndroidNotification(tag="cnv-novita", color="#BB86FC"),
+                    notification=messaging.AndroidNotification(tag=tag, color="#BB86FC"),
                 ),
             )
             for token in tokens
@@ -219,8 +305,16 @@ def send_fcm(payload: dict, client) -> dict:
     counts = {"accounts": 0, "phones": 0, "sent": 0, "removed": 0, "errors": 0}
     allow = client.allow_list()
     for uid, doc in client.accounts():
-        message = notification_for(payload, doc.get("votes") or {}, doc.get("notify"))
-        if message is None:
+        votes = doc.get("votes") or {}
+        messages = [
+            (message, tag)
+            for message, tag in (
+                (notification_for(payload, votes, doc.get("notify")), "cnv-novita"),
+                (last_days_notification(payload, votes, doc.get("lastDays") is True), "cnv-ultimi-giorni"),
+            )
+            if message is not None
+        ]
+        if not messages:
             continue
         email, verified = client.email_of(uid)
         if not is_admitted(uid, email, verified, allow):
@@ -230,15 +324,21 @@ def send_fcm(payload: dict, client) -> dict:
             continue
         counts["accounts"] += 1
         counts["phones"] += len(devices)
-        for (device, _), outcome in zip(devices, client.send([t for _, t in devices], *message)):
-            if outcome is None:
-                counts["sent"] += 1
-            elif outcome == "gone":
-                client.remove_device(uid, device)
-                counts["removed"] += 1
-            else:
-                counts["errors"] += 1
-                print(f"::warning::Notifica non consegnata a un telefono: {outcome}")
+        for message, tag in messages:
+            gone = set()
+            for (device, _), outcome in zip(devices, client.send([t for _, t in devices], *message, tag=tag)):
+                if outcome is None:
+                    counts["sent"] += 1
+                elif outcome == "gone":
+                    client.remove_device(uid, device)
+                    gone.add(device)
+                    counts["removed"] += 1
+                else:
+                    counts["errors"] += 1
+                    print(f"::warning::Notifica non consegnata a un telefono: {outcome}")
+            devices = [(d, t) for d, t in devices if d not in gone]  # not tried again for the next notice
+            if not devices:
+                break
     return counts
 
 
@@ -256,12 +356,13 @@ def main() -> int:
     if args.command == "prepare":
         init_db()
         with SessionLocal() as db:
-            payload = prepare(db, test=args.prova)
-            # Read inside the session: after it closes the films can no longer be read
+            # Today's guesses first, so that the message can announce them
+            # (read inside the session: after it closes the films can no longer be read)
             leaving = [(_title(lf.film), lf.last_day) for lf in record_leaving(db, date.today())]
+            payload = prepare(db, test=args.prova)
         args.out.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        print(f"Film nuovi in sala: {len(payload.get('films', []))}" if payload else "Nessuna novità da notificare")
-        print(f"Ultimi giorni (solo nel registro, nessuna notifica): {len(leaving)} film")
+        print(f"Film nuovi in sala: {len(payload.get('films', []))}")
+        print(f"Ultimi giorni: {len(leaving)} film, da annunciare a chi l'ha chiesto: {len(payload.get('last_days', []))}")
         for title, last_day in leaving:
             print(f"   * {title}: ultimo giorno {last_day:%d/%m}")
         return 0
@@ -300,10 +401,12 @@ def main() -> int:
             f"({counts['removed']} telefoni non più raggiungibili tolti, {counts['errors']} errori)"
         )
     ids = payload.get("ids") or []
-    if ids:
+    last_ids = payload.get("last_day_ids") or []
+    if ids or last_ids:
         init_db()
         with SessionLocal() as db:
             print(f"Film segnati come notificati: {mark_notified(db, ids)}")
+            print(f"Ultimi giorni segnati come annunciati: {mark_last_days(db, last_ids)}")
     return 0
 
 

@@ -146,6 +146,12 @@ class FirebaseAccountBackend implements AccountBackend {
       _db.doc('utenti/$uid').set({'notify': mode}, SetOptions(merge: true));
 
   @override
+  Future<bool> lastDays(String uid) async => (await _db.doc('utenti/$uid').get()).data()?['lastDays'] == true;
+
+  @override
+  Future<void> setLastDays(String uid, bool on) => _db.doc('utenti/$uid').set({'lastDays': on}, SetOptions(merge: true));
+
+  @override
   Future<void> savePhone(String uid, String phone, String token) =>
       _db.doc('utenti/$uid/telefoni/$phone').set({'token': token, 'updated': FieldValue.serverTimestamp()});
 
