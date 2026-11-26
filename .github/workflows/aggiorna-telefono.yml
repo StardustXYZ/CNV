@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 30
     environment:
       name: github-pages
-      url: ${{ steps.pubblica.outputs.page_url }}
+      url: ${{ steps.pubblica.outputs.page_url || steps.pubblica2.outputs.page_url }}
     env:
       TZ: Europe/Rome                                   # "oggi" è il giorno italiano
       DATABASE_URL: sqlite:///${{ github.workspace }}/dati/cnv.db
@@ -113,8 +113,26 @@ jobs:
         with:
           path: site
 
+      # GitHub a volte non vede ancora il pacchetto appena caricato e la pubblicazione fallisce
+      # ("No artifacts named github-pages"): una breve attesa prima, e un secondo tentativo dopo
+      # un minuto. Se fallisce anche quello il passo è rosso e le notifiche non partono
+      - name: Attendi che GitHub veda il pacchetto del sito
+        run: sleep 30
+
       - name: Pubblica su GitHub Pages
         id: pubblica
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Attendi prima di riprovare la pubblicazione
+        if: steps.pubblica.outcome == 'failure'
+        run: |
+          echo "::warning::Prima pubblicazione non riuscita: riprovo tra un minuto"
+          sleep 60
+
+      - name: Pubblica su GitHub Pages (secondo tentativo)
+        id: pubblica2
+        if: steps.pubblica.outcome == 'failure'
         uses: actions/deploy-pages@v5
 
       # Dopo la pubblicazione, così toccando la notifica si aprono già i dati nuovi
